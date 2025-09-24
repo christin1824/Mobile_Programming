@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'signup_page.dart';
+import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -9,36 +10,38 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Variabel untuk mengelola visibilitas kata sandi
+  
   bool _isPasswordVisible = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE54721),
+      backgroundColor: Colors.white, // Ganti warna latar belakang menjadi putih
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // Bagian atas dengan teks "Sudah Punya Akun?"
             Container(
               height: 200,
               alignment: Alignment.center,
               padding: const EdgeInsets.only(top: 50.0),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE54721),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(50.0)),
+              ),
               child: const Text(
                 'Sudah Punya Akun?',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 30,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
             ),
+            // Bagian bawah dengan form login
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(24.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(50.0)),
-              ),
+              padding:  EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -98,7 +101,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 45),
+                  const SizedBox(height: 30),
                   TextField(
                     decoration: InputDecoration(
                       hintText: 'Nama',
@@ -114,7 +117,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 16),
                   TextField(
                     obscureText: !_isPasswordVisible,
                     decoration: InputDecoration(
@@ -141,10 +144,14 @@ class _LoginPageState extends State<LoginPage> {
                         },
                       ),
                     ),
-                  ), 
+                  ),
+                 
                   const SizedBox(height: 200),
                   ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () {Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => const HomePage()),
+                      );
+                      },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE54721),
                       foregroundColor: Colors.white,

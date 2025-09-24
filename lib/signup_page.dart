@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
+import 'home_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -15,40 +16,41 @@ class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE54721),
+      backgroundColor: Colors.white, // Ganti warna latar belakang menjadi putih
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // Bagian atas dengan teks "Belum Punya Akun?"
             Container(
               height: 200,
               alignment: Alignment.center,
               padding: const EdgeInsets.only(top: 50.0),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE54721),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(50.0)),
+              ),
               child: const Text(
                 'Belum Punya Akun?',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 30,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
             ),
+            // Bagian bawah dengan form sign up
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(50.0)),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Penempatan tombol di bagian paling atas
                   Row(
                     children: [
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFDEAE4), // Warna terang
+                            color: const Color(0xFFFDEAE4),
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
@@ -76,7 +78,7 @@ class _SignupPageState extends State<SignupPage> {
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE54721), // Warna gelap
+                            color: const Color(0xFFE54721),
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
@@ -206,7 +208,10 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () {Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => const HomePage()),
+                      );
+                      },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE54721),
                       foregroundColor: Colors.white,

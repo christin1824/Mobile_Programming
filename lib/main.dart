@@ -60,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const Text(
               'Stridez',
               style: TextStyle(
-                fontSize: 30,
+                fontSize: 35,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFFE54721),
               ),
