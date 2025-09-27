@@ -9,6 +9,7 @@ import 'package:geocoding/geocoding.dart';
 
 import 'home_page.dart';
 import 'lari_start_page.dart';
+import 'akun_page.dart'; 
 
 class LariPage extends StatefulWidget {
   const LariPage({super.key});
@@ -491,8 +492,13 @@ class _LariPageState extends State<LariPage> {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const HomePage()),
           );
-        }
-      },
+        } else if (index == 2) {
+          // PENAMBAHAN LOGIKA: Navigasi ke AccountPage
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const AccountPage()),
+          );
+          }
+      } 
     );
   }
 }

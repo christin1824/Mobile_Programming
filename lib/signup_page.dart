@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_frontend/akun_page.dart';
 import 'login_page.dart';
 import 'home_page.dart';
 
@@ -209,7 +210,7 @@ class _SignupPageState extends State<SignupPage> {
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () {Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (context) => const HomePage()),
+                        MaterialPageRoute(builder: (context) => const AccountPage()),
                       );
                       },
                     style: ElevatedButton.styleFrom(

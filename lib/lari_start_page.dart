@@ -1,5 +1,3 @@
-  
- 
 import 'package:intl/intl.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
@@ -9,6 +7,7 @@ import 'home_page.dart';
 import 'lari_finish_page.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+
 // Custom painter untuk progress lingkaran
 class TargetProgressPainter extends CustomPainter {
   final double progress; // 0.0 - 1.0
@@ -56,27 +55,55 @@ class LariStartPage extends StatefulWidget {
 }
 
 class _LariStartPageState extends State<LariStartPage> {
+  // Fungsi untuk memformat durasi menjadi MM:SS
+  String _formatDuration(int minutes, int seconds) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+  }
+
+  // Logika: Target dianggap "Tanpa Target" jika kedua nilai target disetel ke nol.
   bool get isTanpaTarget => widget.targetJarak == 0 && widget.targetWaktu == 0;
+  
   bool isPaused = false;
   Timer? _timer;
+  
+  // Variabel State Lari
+  LatLng? _currentLocation;
+  double currentProgress = 0.0;
+  double currentDistance = 0.0; // Jarak yang sudah ditempuh
+  Position? _previousPosition; // VARIABEL BARU UNTUK TRACKING JARAK
+  double _currentSpeed = 0.0; // VAR BARU: Kecepatan dalam m/s
+  
+  // Durasi aktual lari dan kalori
+  int durationMinutes = 0; 
+  int durationSeconds = 0;
+  int calories = 0; // Masih dummy 0
 
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!isPaused) {
+      
+      // LOGIKA UTAMA: Timer HANYA berjalan jika kecepatan > 0.5 m/s (bergerak)
+      // DAN tidak dalam keadaan JEDA (isPaused).
+      const double minRunningSpeed = 0.5; // Ambang batas (0.5 m/s = 1.8 km/jam)
+      if (_currentSpeed > minRunningSpeed && !isPaused) {
         setState(() {
+          // Logika penghitungan Durasi
           if (durationSeconds < 59) {
             durationSeconds++;
           } else {
             durationSeconds = 0;
             durationMinutes++;
           }
-          // progress lingkaran sesuai target
+          
+          // Logika Progress Lingkaran
           if (widget.isTargetJarak) {
             currentProgress = widget.targetJarak == 0 ? 0 : (currentDistance / widget.targetJarak);
           } else {
             currentProgress = widget.targetWaktu == 0 ? 0 : ((durationMinutes * 60 + durationSeconds) / (widget.targetWaktu * 60));
           }
+          
+          currentProgress = currentProgress.clamp(0.0, 1.0);
         });
       }
     });
@@ -96,12 +123,14 @@ class _LariStartPageState extends State<LariStartPage> {
     _positionStreamSubscription?.cancel();
     super.dispose();
   }
+  
   String? _currentAddress;
   bool _isLoading = true;
   String _getFormattedDate() {
     final now = DateTime.now();
     return DateFormat('EEEE, d MMMM', 'id_ID').format(now);
   }
+  
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(
       items: const <BottomNavigationBarItem>[
@@ -126,22 +155,44 @@ class _LariStartPageState extends State<LariStartPage> {
             MaterialPageRoute(builder: (context) => const HomePage()),
           );
         }
-        // Tambahkan navigasi lain jika perlu
       },
     );
   }
+  
   StreamSubscription<Position>? _positionStreamSubscription;
-
 
   void _startPositionStream() {
     _positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.best),
     ).listen((Position position) {
       if (!mounted) return;
+      
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
         _isLoading = false;
+
+        // --- AMBIL KECEPATAN (position.speed) ---
+        // position.speed memberikan kecepatan dalam meter per detik (m/s)
+        _currentSpeed = position.speed;
+        
+        // Logika Perhitungan Jarak (BARU)
+        if (_previousPosition != null) {
+          double distanceInMeters = Geolocator.distanceBetween(
+            _previousPosition!.latitude,
+            _previousPosition!.longitude,
+            position.latitude,
+            position.longitude,
+          );
+          // Tambahkan jarak, KECUALI jika kecepatan GPS menunjukkan 0 (untuk menghindari drift/loncatan jarak saat diam)
+          if (distanceInMeters > 0) { 
+            currentDistance += distanceInMeters / 1000;
+          }
+        }
+        
+        // Simpan posisi saat ini sebagai posisi sebelumnya
+        _previousPosition = position;
       });
+      
       _updateAddressFromLocation();
     });
   }
@@ -168,16 +219,7 @@ class _LariStartPageState extends State<LariStartPage> {
       // ignore error
     }
   }
-  // Tambahan agar error hilang dan peta berjalan
-  LatLng? _currentLocation;
-  double currentProgress = 0.0;
-  double currentDistance = 0.0;
-  // double targetDistance = 2.0; // diganti dengan widget.targetJarak
-
-  // Dummy data untuk UI bawah
-  int durationMinutes = 20;
-  int durationSeconds = 15;
-  int calories = 850;
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -186,7 +228,7 @@ class _LariStartPageState extends State<LariStartPage> {
           // Map
           FlutterMap(
             options: MapOptions(
-              initialCenter: _currentLocation ?? LatLng(-7.2575, 112.7521), // Surabaya
+              initialCenter: _currentLocation ?? const LatLng(-7.2575, 112.7521), // Surabaya
               initialZoom: 16.0,
               maxZoom: 18.0,
             ),
@@ -213,7 +255,7 @@ class _LariStartPageState extends State<LariStartPage> {
             ],
           ),
 
-          // Header, tanggal, lokasi: SELALU tampil
+          // Header, tanggal, lokasi
           Positioned(
             top: 40,
             left: 24,
@@ -264,7 +306,7 @@ class _LariStartPageState extends State<LariStartPage> {
             ),
           ),
 
-          // Loading overlay jika sedang mencari lokasi (di atas map, tapi header tetap tampil)
+          // Loading overlay
           if (_isLoading)
             Container(
               color: Colors.white.withOpacity(0.8),
@@ -280,7 +322,7 @@ class _LariStartPageState extends State<LariStartPage> {
               ),
             ),
 
-          // Lingkaran Progres Lari (menyesuaikan target dan mode tanpa target)
+          // Lingkaran Progres Lari
           Positioned(
             top: 180,
             left: 0,
@@ -295,9 +337,7 @@ class _LariStartPageState extends State<LariStartPage> {
                     CustomPaint(
                       size: const Size(220, 220),
                       painter: TargetProgressPainter(
-                        progress: (isTanpaTarget || widget.isTargetJarak)
-                          ? (currentDistance / (widget.targetJarak == 0 ? 1 : widget.targetJarak))
-                          : ((durationMinutes * 60 + durationSeconds) / (widget.targetWaktu * 60 == 0 ? 1 : widget.targetWaktu * 60)),
+                        progress: currentProgress, 
                         color: const Color(0xFFE54721),
                         strokeWidth: 18,
                       ),
@@ -305,21 +345,26 @@ class _LariStartPageState extends State<LariStartPage> {
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // Teks Utama Lingkaran (Km atau MM:SS Min)
                         Text(
-                          '${currentDistance.toStringAsFixed(1)} Km',
+                          (widget.isTargetJarak || isTanpaTarget)
+                              ? '${currentDistance.toStringAsFixed(1)} Km' 
+                              : '${_formatDuration(durationMinutes, durationSeconds)} Min', 
                           style: const TextStyle(
                             fontSize: 36,
                             fontWeight: FontWeight.bold,
                             color: Colors.black,
                           ),
                         ),
-                        // Jika bukan tanpa target, tampilkan target harian dan target kecil
+
+                        // HANYA tampilkan Target Harian jika BUKAN mode Tanpa Target
                         if (!isTanpaTarget) ...[
                           const SizedBox(height: 4),
                           Text(
+                            // Nilai target kecil
                             widget.isTargetJarak
-                              ? '${widget.targetJarak.toStringAsFixed(1)} Km'
-                              : '${widget.targetWaktu} min',
+                                ? '${widget.targetJarak.toStringAsFixed(1)} Km'
+                                : '${widget.targetWaktu} min',
                             style: const TextStyle(
                               fontSize: 18,
                               color: Colors.black87,
@@ -344,7 +389,7 @@ class _LariStartPageState extends State<LariStartPage> {
             ),
           ),
 
-          // Informasi Durasi/Jarak dan Kalori (menyesuaikan target)
+          // Informasi Durasi/Jarak dan Kalori
           Positioned(
             bottom: 140,
             left: 24,
@@ -358,7 +403,7 @@ class _LariStartPageState extends State<LariStartPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Info utama (durasi/jarak)
+                  // Info pendamping (durasi/jarak)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -378,9 +423,10 @@ class _LariStartPageState extends State<LariStartPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
+                        // Nilai pendamping
                         widget.isTargetJarak
-                          ? '${durationMinutes.toString().padLeft(2, '0')} : ${durationSeconds.toString().padLeft(2, '0')} min'
-                          : '${currentDistance.toStringAsFixed(2)} Km',
+                            ? _formatDuration(durationMinutes, durationSeconds) 
+                            : '${currentDistance.toStringAsFixed(2)} Km', 
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
                       ),
                     ],
@@ -410,7 +456,7 @@ class _LariStartPageState extends State<LariStartPage> {
 
           // Tombol Jeda dan Selesai
           Positioned(
-            bottom: 40, // lebih turun dari sebelumnya
+            bottom: 40,
             left: 0,
             right: 0,
             child: Row(
@@ -451,9 +497,8 @@ class _LariStartPageState extends State<LariStartPage> {
                 GestureDetector(
                   onTap: () {
                     _timer?.cancel();
-                    // Kumpulkan data tracking (dummy di sini, ganti sesuai data asli)
+                    // Kumpulkan data tracking
                     List<LatLng> routePoints = [];
-                    // Tambahkan logika pengisian routePoints jika sudah ada tracking
                     Navigator.of(context).pushReplacement(
                       MaterialPageRoute(
                         builder: (context) => LariFinishPage(
