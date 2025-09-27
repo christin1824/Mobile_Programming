@@ -1,69 +1,125 @@
 import 'dart:math';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'lari_page.dart';
+import 'akun_page.dart'; // Pastikan AccountPage sudah diimpor
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _selectedIndex = 0;
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    if (index == 0) {
+      // Navigasi ke Beranda (Tetap di sini)
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const HomePage()),
+      );
+    } else if (index == 1) {
+      // Navigasi ke Lari
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const LariPage()),
+      );
+    } else if (index == 2) {
+      // PENAMBAHAN LOGIKA: Navigasi ke AccountPage
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const AccountPage()),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Bagian Header (Orange)
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE54721),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(50)),
-              ),
-              padding: const EdgeInsets.only(top: 60, left: 24, right: 24),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Selamat pagi, User!',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 35,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Siap olahraga hari ini?',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 18,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildHomePageContent(),
+          const LariPage(),
+          const AccountPage(), 
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Beranda',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.run_circle),
+            label: 'Lari',
+          ),
+          // Bagian Akun
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Akun',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: const Color(0xFFE54721),
+        unselectedItemColor: Colors.grey,
+        onTap: _onItemTapped,
+      ),
+    );
+  }
+
+  Widget _buildHomePageContent() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Container(
+            height: 200,
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE54721),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(50)),
             ),
-            
-            // Konten Halaman (Putih)
+            padding: const EdgeInsets.only(top: 75, left: 24, right: 24),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Selamat pagi, User!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 35,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Siap olahraga hari ini?',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 18,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Column(
                 children: [
-                  // Progress Mingguan
                   _buildWeeklyProgress(),
                   const SizedBox(height: 30),
-
-                  // Target Lari & Ilustrasi
                   Row(
                     children: [
-                      // Ilustrasi
                       Image.asset(
                         'assets/icons/lari.png',
-                        height: 250,
+                        height: 200,
                       ),
                       const SizedBox(width: 20),
-                      // Teks Target
                       Expanded(
                         child: const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,28 +150,25 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-
-                  // Progress Bar
                   _buildProgressBar(current: 6550, target: 10000),
                   const SizedBox(height: 30),
-
-                  // Ringkasan Statistik
                   _buildStatsContainer(),
                 ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
-  // Widget Pembantu untuk Progress Mingguan
   Widget _buildWeeklyProgress() {
-    final days = ['M', 'S', 'S', 'R', 'K', 'J', 'S'];
-    final dates = ['14', '15', '16', '17', '18', '19', '20'];
-    final progressValues = [0.7, 0.5, 0.8, 0.4, 0.0, 0.0, 0.0]; // Contoh nilai progress
+    // Hari dalam seminggu (Indonesia): Senin, Selasa, Rabu, Kamis, Jumat, Sabtu, Minggu
+    final dayInitials = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
+    // Cari Senin minggu ini
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final weekDates = List.generate(7, (i) => monday.add(Duration(days: i)));
+    final progressValues = [0.7, 0.5, 0.8, 0.4, 0.0, 0.0, 0.0]; // dummy
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,9 +186,11 @@ class HomePage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: List.generate(7, (index) {
             final progress = progressValues[index];
-            final isCompleted = progress > 0;
-            final color = isCompleted ? Colors.orange : Colors.grey;
-
+            final color = progress > 0 ? Colors.orange : Colors.grey;
+            final date = weekDates[index];
+            // Inisial hari: S, S, R, K, J, S, M (Senin-Minggu)
+            final dayInitial = DateFormat.E('id_ID').format(date)[0].toUpperCase();
+            
             return Column(
               children: [
                 SizedBox(
@@ -151,11 +206,11 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  days[index],
+                  dayInitial,
                   style: TextStyle(color: color),
                 ),
                 Text(
-                  dates[index],
+                  date.day.toString(),
                   style: TextStyle(color: color),
                 ),
               ],
@@ -166,7 +221,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // Custom Painter untuk menggambar lingkaran progress
   Widget _buildProgressBar({required int current, required int target}) {
     final progress = current / target;
     return Column(
@@ -188,7 +242,6 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // Widget Pembantu untuk Statistik
   Widget _buildStatsContainer() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -228,28 +281,6 @@ class HomePage extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  // Widget Pembantu untuk Bottom Navigation Bar
-  Widget _buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      items: const <BottomNavigationBarItem>[
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home),
-          label: 'Beranda',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.run_circle),
-          label: 'Lari',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.person),
-          label: 'Akun',
-        ),
-      ],
-      currentIndex: 0,
-      selectedItemColor: const Color(0xFFE54721),
     );
   }
 }
