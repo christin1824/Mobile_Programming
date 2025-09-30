@@ -81,6 +81,10 @@ flutter:
     - assets/icons/langkah.png
     - assets/icons/kalori.png
     - assets/icons/body_target.png 
+    - assets/icons/logo_kecil.png
+    - assets/icons/langkah_kecil.png  
+    - assets/icons/durasi_logo.png 
+    - assets/icons/lari_logo.png 
   
 
   fonts:

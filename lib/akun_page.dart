@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'lari_page.dart';
+import 'akun_setgoals_page.dart'; 
+import 'akun_riwayatlari_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -11,21 +13,25 @@ class AccountPage extends StatefulWidget {
 }
 
 class _AccountPageState extends State<AccountPage> {
-  int _selectedIndex = 2; // Index 2 adalah halaman Akun
+  int _selectedIndex = 2; 
 
-  // Data dummy untuk tampilan
+  // Data dummy/state awal
   final String _userName = 'Icha';
   final String _userEmail = 'icha.cantik@gmail.com';
-  final double _weightAwal = 78;
-  final double _weightSaatIni = 71;
-  final double _weightTarget = 65;
+  // BB Awal default (bisa diupdate dari Set Goals)
+  double _weightAwal = 78.0; 
+  final double _weightSaatIni = 71.0; 
+  
+  // --- STATE UNTUK DATA GOALS (Default Awal) ---
+  double _tinggiBadanCm = 170.0; 
+  String _jenisKelamin = 'Pria'; 
+  // ---------------------------------------------
   
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
 
-    // Logika navigasi menggunakan pushReplacement untuk BottomNavigationBar
     if (index == 0) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomePage()),
@@ -35,26 +41,56 @@ class _AccountPageState extends State<AccountPage> {
         MaterialPageRoute(builder: (context) => const LariPage()),
       );
     } 
-    // Jika index == 2 (Akun), tetap di halaman ini.
+  }
+
+  // --- FUNGSI PERHITUNGAN BERAT BADAN IDEAL (BBI) ---
+  double _calculateIdealBodyWeight() {
+    double bbi;
+    
+    double tbCm = _tinggiBadanCm;
+    
+    // Menggunakan Rumus Broca yang Disederhanakan
+    if (_jenisKelamin == 'Pria') {
+      bbi = (tbCm - 100) - (0.10 * (tbCm - 100));
+    } else {
+      bbi = (tbCm - 100) - (0.15 * (tbCm - 100));
+    }
+
+    // Mengembalikan BBI, dibulatkan ke bilangan bulat terdekat untuk tampilan
+    return bbi.roundToDouble().clamp(40.0, 150.0);
+  }
+
+  double get _calculatedWeightTarget => _calculateIdealBodyWeight();
+
+  // --- LOGIKA NAVIGASI DENGAN MENUNGGU HASIL ---
+  void _navigateToSetGoals() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AkunSetGoalsPage()),
+    );
+
+    // Memeriksa jika ada data yang dikembalikan (Map)
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        // Memperbarui state dengan data goals baru
+        _tinggiBadanCm = result['tinggiBadan'] ?? _tinggiBadanCm;
+        _jenisKelamin = result['jenisKelamin'] ?? _jenisKelamin;
+        _weightAwal = result['beratAwal'] ?? _weightAwal;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Tinggi header disesuaikan. Dikecilkan sedikit untuk overlap yang lebih baik.
-    const double headerHeight = 220; 
-    
-    // Mendapatkan tinggi aman status bar
     final double topPadding = MediaQuery.of(context).padding.top; 
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      // GANTI DARI STACK MENJADI SINGLECHILDSCROLLVIEW
       body: SingleChildScrollView( 
-        // Padding bawah untuk mencegah konten terpotong BottomNavigationBar
         padding: const EdgeInsets.only(bottom: 80), 
         child: Column(
           children: [
-            // BAGIAN 1: HEADER MERAH (Ikut di-scroll)
+            // BAGIAN 1: HEADER MERAH
             Container(
               height: 200, 
               width: double.infinity,
@@ -65,12 +101,10 @@ class _AccountPageState extends State<AccountPage> {
               child: Column(
                 children: [
                   SizedBox(height: topPadding), 
-                  // Konten header (Foto Profil, Nama, Email)
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Foto Profil (Stack)
                         Stack(
                           alignment: Alignment.bottomRight,
                           children: [
@@ -79,10 +113,10 @@ class _AccountPageState extends State<AccountPage> {
                               backgroundColor: Colors.white,
                               child: CircleAvatar(
                                 radius: 38, 
+                                // Ganti dengan asset Anda yang sebenarnya jika ada
                                 backgroundImage: AssetImage('assets/icons/profile_placeholder.png'),
                               ),
                             ),
-                            // Ikon Edit
                             Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
@@ -117,15 +151,14 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ),
             
-            // BAGIAN 2: KONTEN UTAMA (Kartu dan Menu - Ikut di-scroll)
+            // BAGIAN 2: KONTEN UTAMA
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              // Transform.translate menarik konten ke atas untuk efek overlap
               child: Transform.translate(
-                offset: const Offset(0, 10), // Menarik konten ke atas 60 piksel
+                offset: const Offset(0, 10), 
                 child: Column(
                   children: [
-                    // Kartu Berat Badan
+                    // Kartu Berat Badan (MENGGUNAKAN NILAI TARGET BBI)
                     _buildWeightCard(),
                     const SizedBox(height: 10), 
 
@@ -135,9 +168,11 @@ class _AccountPageState extends State<AccountPage> {
 
                     // Tombol Set Goals
                     _buildMenuButton(
+                      // JUDUL DIPERBAIKI: Hapus bagian dinamis
                       title: 'Set Goals',
                       icon: Icons.track_changes,
-                      onTap: () { /* TODO: Navigasi ke Halaman Set Goals */ },
+                      // MENGGUNAKAN FUNGSI NAVIGASI BARU
+                      onTap: _navigateToSetGoals,
                     ),
                     const SizedBox(height: 15),
 
@@ -145,13 +180,17 @@ class _AccountPageState extends State<AccountPage> {
                     _buildMenuButton(
                       title: 'Riwayat Lari',
                       icon: Icons.history,
-                      onTap: () { /* TODO: Navigasi ke Halaman Riwayat Lari */ },
+                      onTap: () { 
+                          Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const AkunRiwayatLariPage()),
+                        );
+                       },
                     ),
                   ],
                 ),
               ),
             ),
-            // Padding tambahan di bawah
             const SizedBox(height: 30), 
           ],
         ),
@@ -170,9 +209,17 @@ class _AccountPageState extends State<AccountPage> {
     );
   }
 
-  // MARK: - Widget Pembantu (Tidak Ada Perubahan)
+  // MARK: - Widget Pembantu
 
   Widget _buildWeightCard() {
+    // Menggunakan BBI yang dihitung sebagai target
+    final double targetBBI = _calculatedWeightTarget;
+
+    // Perhitungan progress
+    final double totalRange = _weightAwal - targetBBI; 
+    final double progressMade = _weightAwal - _weightSaatIni;
+    double progressValue = totalRange > 0 ? (progressMade / totalRange).clamp(0.0, 1.0) : 0.0;
+    
     return Card(
       elevation: 4,
       color: const Color(0xFFE54721), 
@@ -207,7 +254,7 @@ class _AccountPageState extends State<AccountPage> {
             ),
             const SizedBox(height: 15),
             LinearProgressIndicator(
-              value: (_weightAwal - _weightSaatIni) / (_weightAwal - _weightTarget),
+              value: progressValue, 
               backgroundColor: Colors.white.withOpacity(0.5),
               color: Colors.white,
               minHeight: 8,
@@ -217,9 +264,10 @@ class _AccountPageState extends State<AccountPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
+                // MENGGUNAKAN _weightAwal DARI STATE
                 _weightItem('Awal', '${_weightAwal.toInt()} kg', Colors.white), 
-                _weightItem('Saat Ini', '${_weightSaatIni.toInt()} kg', Colors.white), 
-                _weightItem('Target', '${_weightTarget.toInt()} kg', Colors.white), 
+                // MENGGUNAKAN HASIL PERHITUNGAN BBI
+                _weightItem('Target (BBI)', '${targetBBI.toInt()} kg', Colors.white), 
               ],
             ),
           ],
@@ -251,7 +299,7 @@ class _AccountPageState extends State<AccountPage> {
       children: [
         _statCircle(Icons.access_time, '0j 50m', 'Total Waktu', Colors.orange),
         _statCircle(Icons.local_fire_department, '747 kal', 'Terbakar', Colors.red),
-        _statCircle(Icons.fitness_center, '2 lari', 'Berhasil dilakukan', Colors.blue),
+        _statCircle(Icons.fitness_center, '2 lari', 'Berhasil\ndilakukan', Colors.blue),
       ],
     );
   }

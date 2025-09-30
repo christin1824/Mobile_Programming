@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'home_page.dart';
+import 'akun_page.dart';
 
 class LariFinishPage extends StatelessWidget {
   final List<LatLng> routePoints;
@@ -41,7 +42,7 @@ class LariFinishPage extends StatelessWidget {
                   polylines: [
                     Polyline(
                       points: routePoints,
-                      color: const Color(0xFFE54721),
+                      color: const Color.fromARGB(255, 21, 42, 224),
                       strokeWidth: 6.0,
                     ),
                   ],
@@ -136,8 +137,11 @@ class LariFinishPage extends StatelessWidget {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const HomePage()),
             );
+          } else if (index == 2) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const AccountPage()),
+          );
           }
-          // Tambahkan navigasi lain jika perlu
         },
       ),
     );

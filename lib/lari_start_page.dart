@@ -7,6 +7,7 @@ import 'home_page.dart';
 import 'lari_finish_page.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'akun_page.dart'; 
 
 // Custom painter untuk progress lingkaran
 class TargetProgressPainter extends CustomPainter {
@@ -153,6 +154,10 @@ class _LariStartPageState extends State<LariStartPage> {
         if (index == 0) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        } else if (index == 2) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const AccountPage()),
           );
         }
       },
