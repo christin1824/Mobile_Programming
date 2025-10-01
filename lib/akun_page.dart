@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'dart:io'; // WAJIB: Untuk menggunakan kelas File dan FileImage
 import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'lari_page.dart';
 import 'akun_setgoals_page.dart'; 
 import 'akun_riwayatlari_page.dart';
+import 'akun_profile.dart'; // Pastikan ini ada
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -15,16 +17,21 @@ class AccountPage extends StatefulWidget {
 class _AccountPageState extends State<AccountPage> {
   int _selectedIndex = 2; 
 
+  // --- DATA PROFILE (Dapat diubah) ---
+  String _userName = 'Nama';
+  String _userEmail = 'Email';
+  String _userPhone = 'No. Telepon'; 
+  // *STATE BARU UNTUK PATH FOTO*
+  String? _profileImagePath; 
+  // ------------------------------------
+  
   // Data dummy/state awal
-  final String _userName = 'Icha';
-  final String _userEmail = 'icha.cantik@gmail.com';
-  // BB Awal default (bisa diupdate dari Set Goals)
   double _weightAwal = 78.0; 
   final double _weightSaatIni = 71.0; 
   
   // --- STATE UNTUK DATA GOALS (Default Awal) ---
   double _tinggiBadanCm = 170.0; 
-  String _jenisKelamin = 'Pria'; 
+  String _jenisKelamin = 'Perempuan'; 
   // ---------------------------------------------
   
   void _onItemTapped(int index) {
@@ -43,6 +50,37 @@ class _AccountPageState extends State<AccountPage> {
     } 
   }
 
+  // --- FUNGSI NAVIGASI UNTUK EDIT PROFILE (MENGIRIM DAN MENERIMA DATA) ---
+  void _navigateToProfileEdit() async { // Menggunakan async
+    // 1. Mengirim data profil saat ini ke halaman edit
+    final result = await Navigator.push( // Menggunakan await
+      context,
+      MaterialPageRoute(
+        builder: (context) => AccountProfileScreen(
+          // Kirim data state saat ini sebagai nilai awal, termasuk path foto
+          initialName: _userName,
+          initialEmail: _userEmail,
+          initialPhone: _userPhone,
+          initialImagePath: _profileImagePath, // Mengirim path foto saat ini
+        ), 
+      ),
+    );
+
+    // 2. Memeriksa jika ada data yang dikembalikan (yaitu setelah tombol SIMPAN ditekan)
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        // 3. Memperbarui state dengan data yang baru
+        _userName = result['userName'] ?? _userName;
+        _userEmail = result['userEmail'] ?? _userEmail;
+        _userPhone = result['userPhone'] ?? _userPhone;
+        // *MEMPERBARUI PATH FOTO*
+        // Pastikan path foto diperbarui (bisa null jika dibatalkan)
+        _profileImagePath = result['userProfilePath'] as String?;
+      });
+    }
+  }
+  // --------------------------------------------------------
+
   // --- FUNGSI PERHITUNGAN BERAT BADAN IDEAL (BBI) ---
   double _calculateIdealBodyWeight() {
     double bbi;
@@ -52,7 +90,7 @@ class _AccountPageState extends State<AccountPage> {
     // Menggunakan Rumus Broca yang Disederhanakan
     if (_jenisKelamin == 'Pria') {
       bbi = (tbCm - 100) - (0.10 * (tbCm - 100));
-    } else {
+    } else { // Perempuan
       bbi = (tbCm - 100) - (0.15 * (tbCm - 100));
     }
 
@@ -62,7 +100,7 @@ class _AccountPageState extends State<AccountPage> {
 
   double get _calculatedWeightTarget => _calculateIdealBodyWeight();
 
-  // --- LOGIKA NAVIGASI DENGAN MENUNGGU HASIL ---
+  // --- LOGIKA NAVIGASI DENGAN MENUNGGU HASIL (SET GOALS) ---
   void _navigateToSetGoals() async {
     final result = await Navigator.push(
       context,
@@ -79,6 +117,20 @@ class _AccountPageState extends State<AccountPage> {
       });
     }
   }
+
+  // MARK: - Widget Pembantu
+
+  // Helper function untuk menentukan ImageProvider
+  ImageProvider _getProfileImage() {
+    if (_profileImagePath != null) {
+      // Jika path foto lokal tersedia, gunakan FileImage
+      // FileImage membutuhkan import 'dart:io'
+      return FileImage(File(_profileImagePath!));
+    }
+    // Jika tidak, gunakan asset placeholder default
+    return const AssetImage('assets/icons/profile_placeholder.png');
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -108,29 +160,37 @@ class _AccountPageState extends State<AccountPage> {
                         Stack(
                           alignment: Alignment.bottomRight,
                           children: [
-                            const CircleAvatar(
+                            // HAPUS 'const' di sini karena CircleAvatar di dalamnya dinamis
+                            CircleAvatar( 
                               radius: 40, 
                               backgroundColor: Colors.white,
                               child: CircleAvatar(
                                 radius: 38, 
-                                // Ganti dengan asset Anda yang sebenarnya jika ada
-                                backgroundImage: AssetImage('assets/icons/profile_placeholder.png'),
+                                // *MENGGUNAKAN FUNGSI BARU UNTUK MENAMPILKAN FOTO*
+                                // Fungsi ini non-const, jadi widget pembungkusnya juga tidak boleh const
+                                backgroundImage: _getProfileImage(),
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFE54721), width: 1.5),
+                            
+                            // ICON EDIT (PENSIL) - PANGGIL FUNGSI NAVIGASI ASYNC
+                            GestureDetector(
+                              onTap: _navigateToProfileEdit, 
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFE54721), width: 1.5),
+                                ),
+                                child: const Icon(Icons.edit, color: Color(0xFFE54721), size: 18),
                               ),
-                              child: const Icon(Icons.edit, color: Color(0xFFE54721), size: 18),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
+                        // Tampilkan data profil terbaru
                         Text(
-                          _userName,
+                          _userName, 
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 24,
@@ -138,7 +198,7 @@ class _AccountPageState extends State<AccountPage> {
                           ),
                         ),
                         Text(
-                          _userEmail,
+                          _userEmail, 
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.8),
                             fontSize: 16,
@@ -168,10 +228,8 @@ class _AccountPageState extends State<AccountPage> {
 
                     // Tombol Set Goals
                     _buildMenuButton(
-                      // JUDUL DIPERBAIKI: Hapus bagian dinamis
                       title: 'Set Goals',
                       icon: Icons.track_changes,
-                      // MENGGUNAKAN FUNGSI NAVIGASI BARU
                       onTap: _navigateToSetGoals,
                     ),
                     const SizedBox(height: 15),

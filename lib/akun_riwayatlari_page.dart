@@ -105,8 +105,7 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
       isFavorite: true,
       calories: 780,
     ),
-    // Tambah satu data lagi untuk membuat total lari menjadi 4
-     RunRecord(
+    RunRecord(
       dateTime: DateTime.now().subtract(const Duration(days: 1, hours: 10)),
       distance: 2.5,
       duration: '15:00',
@@ -165,15 +164,12 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
     
     Duration totalDuration = Duration.zero;
     for (var record in list) {
-      // Menguraikan durasi string 'MM:SS' atau 'HH:MM'
       final parts = record.duration.split(':');
       if (parts.length == 2) {
-        // Asumsi format MM:SS
         final minutes = int.tryParse(parts[0]) ?? 0;
         final seconds = int.tryParse(parts[1]) ?? 0;
         totalDuration += Duration(minutes: minutes, seconds: seconds);
       } else if (parts.length == 3) {
-        // Asumsi format HH:MM:SS
         final hours = int.tryParse(parts[0]) ?? 0;
         final minutes = int.tryParse(parts[1]) ?? 0;
         final seconds = int.tryParse(parts[2]) ?? 0;
@@ -347,7 +343,7 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
     );
   }
 
-  Widget _buildMetricItemNew(String value, String unit, [double valueFontSize = 30.0]) {
+  Widget _buildMetricItemNew(String value, String unit, [double valueFontSize = 32.0]) {
     return Column(
       children: [
         Text(
@@ -367,7 +363,6 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
     );
   }
 
-  // 4. Item Statistik Total (TIDAK BERUBAH)
   Widget _buildTotalStatItem(String value, String label) {
     return Column(
       children: [
@@ -387,9 +382,9 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
     );
   }
 
-  // WIDGET HEADER (MENGGUNAKAN DATA REAL-TIME)
+  // WIDGET HEADER (Tombol More Dihapus di sini)
   Widget _buildHeaderSesuaiDesain(double topPadding) {
-    final stats = _totalStats; // Ambil statistik yang sudah difilter
+    final stats = _totalStats; 
     const Color primaryOrange = Color(0xFFE54721);
     const Color statBoxColor = Color.fromRGBO(255, 255, 255, 0.2); 
     
@@ -408,7 +403,11 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
-              const Icon(Icons.more_vert, color: Colors.white, size: 30),
+              
+              // HILANGKAN WIDGET INI: const Icon(Icons.more_vert, color: Colors.white, size: 30),
+              // Karena hanya ada satu ikon (back), kita perlu menambahkan Spacer/SizedBox
+              // agar judul Riwayat Lari tetap di sebelah kiri.
+              const SizedBox(width: 30), // Mengganti ikon more_vert dengan spasi
             ],
           ),
           
@@ -437,10 +436,8 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                // TOTAL LARI
                 _buildTotalStatItem(stats.totalRuns.toString(), 'Total Lari'),
                 
-                // KM (Dibulatkan ke 1 desimal)
                 Column(
                   children: [
                     Text(
@@ -458,7 +455,6 @@ class _AkunRiwayatLariPageState extends State<AkunRiwayatLariPage> {
                   ],
                 ),
                 
-                // JAM/DURASI (Diformat HH:MM)
                 _buildTotalStatItem(stats.totalDurationFormatted, 'Jam'),
               ],
             ),

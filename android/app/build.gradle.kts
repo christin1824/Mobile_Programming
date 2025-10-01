@@ -39,6 +39,12 @@ android {
     }
 }
 
+
 flutter {
     source = "../.."
+}
+
+// Tambahkan blok dependencies dengan sintaks Kotlin
+dependencies {
+    implementation("androidx.appcompat:appcompat:1.6.1")
 }

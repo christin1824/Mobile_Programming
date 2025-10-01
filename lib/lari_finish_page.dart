@@ -20,15 +20,49 @@ class LariFinishPage extends StatelessWidget {
     required this.calories,
   });
 
+  // MARK: - LOGIC REAL-TIME TIME OF DAY
+
+  /// Menentukan label waktu (Pagi, Siang, Sore, Malam) berdasarkan jam saat ini.
+  String _getRunTimeOfDay() {
+    final int hour = DateTime.now().hour;
+
+    if (hour >= 5 && hour <= 10) {
+      return 'Pagi'; // Jam 05:00 - 10:59
+    } else if (hour >= 11 && hour <= 14) {
+      return 'Siang'; // Jam 11:00 - 14:59
+    } else if (hour >= 15 && hour <= 18) {
+      return 'Sore'; // Jam 15:00 - 18:59
+    } else {
+      return 'Malam'; // Jam 19:00 - 04:59
+    }
+  }
+
+  // MARK: - GET START AND END POINTS
+
+  // Titik Awal Lari
+  LatLng? get _startPoint => routePoints.isNotEmpty ? routePoints.first : null;
+  // Titik Akhir Lari
+  LatLng? get _endPoint => routePoints.isNotEmpty ? routePoints.last : null;
+
   @override
   Widget build(BuildContext context) {
+    // Ambil label waktu secara real-time
+    final String runTimeLabel = _getRunTimeOfDay();
+
+    // Tentukan pusat peta agar mencakup semua rute
+    final LatLng centerPoint = _startPoint ?? const LatLng(-7.2575, 112.7521);
+
+    // KETEBELAN GARIS DITINGKATKAN DARI 6.0 MENJADI 8.0
+    const double polylineStrokeWidth = 8.0;
+
     return Scaffold(
       body: Stack(
         children: [
-          // Map with route polyline
+          // Map with route polyline and markers
           FlutterMap(
             options: MapOptions(
-              initialCenter: routePoints.isNotEmpty ? routePoints.first : const LatLng(-7.2575, 112.7521),
+              // Pastikan peta berpusat pada rute lari
+              initialCenter: centerPoint,
               initialZoom: 15.5,
               maxZoom: 18.0,
             ),
@@ -37,13 +71,44 @@ class LariFinishPage extends StatelessWidget {
                 urlTemplate: 'https://api.maptiler.com/maps/openstreetmap/{z}/{x}/{y}.png?key=oRyZXl1bSYtekMhN6tw7',
                 userAgentPackageName: 'com.stridez.app',
               ),
+
+              // Rute (Track) Lari: Dibuat lebih tebal
               if (routePoints.length > 1)
                 PolylineLayer(
                   polylines: [
                     Polyline(
                       points: routePoints,
                       color: const Color.fromARGB(255, 21, 42, 224),
-                      strokeWidth: 6.0,
+                      strokeWidth: polylineStrokeWidth, // Ketebalan 8.0
+                    ),
+                  ],
+                ),
+
+              // Marker Titik Awal dan Akhir
+              if (_startPoint != null && _endPoint != null)
+                MarkerLayer(
+                  markers: [
+                    // Marker Titik Awal (Start Point) - Warna Hijau
+                    Marker(
+                      point: _startPoint!,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(
+                        Icons.run_circle,
+                        color: Colors.green, // Warna Hijau untuk START
+                        size: 40,
+                      ),
+                    ),
+                    // Marker Titik Akhir (End Point) - Warna Merah
+                    Marker(
+                      point: _endPoint!,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(
+                        Icons.flag,
+                        color: Color(0xFFE54721), // Warna Merah-Oranye untuk FINISH
+                        size: 35,
+                      ),
                     ),
                   ],
                 ),
@@ -58,14 +123,23 @@ class LariFinishPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  children: const [
-                    Icon(Icons.directions_run, color: Color(0xFFE54721), size: 35),
-                    SizedBox(width: 8),
-                    Text('Lari Sore', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Color(0xFFE54721))),
+                  children: [
+                    const Icon(Icons.directions_run, color: Color(0xFFE54721), size: 35),
+                    const SizedBox(width: 8),
+                    // MENGGUNAKAN LABEL WAKTU DINAMIS
+                    Text(
+                      'Lari $runTimeLabel', 
+                      style: const TextStyle(
+                        fontSize: 30, 
+                        fontWeight: FontWeight.bold, 
+                        color: Color(0xFFE54721)
+                      )
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
+                  // Format jarak dengan koma sebagai pemisah desimal
                   distance.toStringAsFixed(2).replaceAll('.', ','),
                   style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Color(0xFFE54721)),
                 ),
@@ -106,6 +180,7 @@ class LariFinishPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
+                  // Kalori
                   Row(
                     children: [
                       const Icon(Icons.local_fire_department, color: Color(0xFFE54721), size: 28),
@@ -124,6 +199,7 @@ class LariFinishPage extends StatelessWidget {
           ),
         ],
       ),
+      // Bottom navigation
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
@@ -138,9 +214,9 @@ class LariFinishPage extends StatelessWidget {
               MaterialPageRoute(builder: (context) => const HomePage()),
             );
           } else if (index == 2) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const AccountPage()),
-          );
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const AccountPage()),
+            );
           }
         },
       ),
