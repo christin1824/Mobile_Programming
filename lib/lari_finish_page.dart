@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+// HAPUS: import 'package:latlong2/latlong.dart'; 
 import 'home_page.dart';
 import 'akun_page.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 
 class LariFinishPage extends StatelessWidget {
-  final List<LatLng> routePoints;
+  // Tipe data sudah gmaps.LatLng
+  final List<gmaps.LatLng> routePoints; 
   final double distance;
   final int durationMinutes;
   final int durationSeconds;
@@ -13,7 +14,7 @@ class LariFinishPage extends StatelessWidget {
 
   const LariFinishPage({
     super.key,
-    required this.routePoints,
+    required this.routePoints, 
     required this.distance,
     required this.durationMinutes,
     required this.durationSeconds,
@@ -40,80 +41,82 @@ class LariFinishPage extends StatelessWidget {
   // MARK: - GET START AND END POINTS
 
   // Titik Awal Lari
-  LatLng? get _startPoint => routePoints.isNotEmpty ? routePoints.first : null;
+  gmaps.LatLng? get _startPoint => routePoints.isNotEmpty ? routePoints.first : null;
   // Titik Akhir Lari
-  LatLng? get _endPoint => routePoints.isNotEmpty ? routePoints.last : null;
+  gmaps.LatLng? get _endPoint => routePoints.isNotEmpty ? routePoints.last : null;
+  
+  // Lokasi default jika rute kosong
+  static const gmaps.LatLng _defaultLocation = gmaps.LatLng(-7.2820, 112.7944);
+
+  // MARK: - CALCULATE PACE (min/km)
+  String _calculatePace() {
+    if (distance <= 0) return '0:00';
+    
+    // Total waktu dalam menit
+    final double totalMinutes = durationMinutes + (durationSeconds / 60);
+    
+    // Pace = total menit / jarak (km)
+    final double paceValue = totalMinutes / distance;
+    
+    // Konversi ke format menit:detik
+    final int paceMinutes = paceValue.floor();
+    final int paceSeconds = ((paceValue - paceMinutes) * 60).round();
+    
+    return '${paceMinutes.toString()}:${paceSeconds.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Ambil label waktu secara real-time
     final String runTimeLabel = _getRunTimeOfDay();
+    
+    // Tentukan titik yang akan digunakan untuk memusatkan kamera
+    final gmaps.LatLng cameraTarget = _startPoint ?? _defaultLocation;
 
-    // Tentukan pusat peta agar mencakup semua rute
-    final LatLng centerPoint = _startPoint ?? const LatLng(-7.2575, 112.7521);
-
-    // KETEBELAN GARIS DITINGKATKAN DARI 6.0 MENJADI 8.0
-    const double polylineStrokeWidth = 8.0;
 
     return Scaffold(
       body: Stack(
         children: [
           // Map with route polyline and markers
-          FlutterMap(
-            options: MapOptions(
-              // Pastikan peta berpusat pada rute lari
-              initialCenter: centerPoint,
-              initialZoom: 15.5,
-              maxZoom: 18.0,
+          gmaps.GoogleMap(
+            // Target peta awal harus berupa gmaps.LatLng
+            initialCameraPosition: gmaps.CameraPosition(
+              target: cameraTarget,
+              zoom: 17.0,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://api.maptiler.com/maps/openstreetmap/{z}/{x}/{y}.png?key=oRyZXl1bSYtekMhN6tw7',
-                userAgentPackageName: 'com.stridez.app',
+            markers: {
+              if (_startPoint != null)
+                gmaps.Marker(
+                  markerId: const gmaps.MarkerId('startPoint'),
+                  position: _startPoint!, // Tipe sudah gmaps.LatLng
+                  icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueGreen),
+                ),
+              if (_endPoint != null)
+                gmaps.Marker(
+                  markerId: const gmaps.MarkerId('endPoint'),
+                  position: _endPoint!, // Tipe sudah gmaps.LatLng
+                  icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueRed),
+                ),
+            },
+            polylines: {
+              gmaps.Polyline(
+                polylineId: const gmaps.PolylineId('runRoute'),
+                points: routePoints, // List<gmaps.LatLng> sudah benar
+                color: const Color(0xFFE54721),
+                width: 5,
               ),
-
-              // Rute (Track) Lari: Dibuat lebih tebal
-              if (routePoints.length > 1)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: routePoints,
-                      color: const Color.fromARGB(255, 21, 42, 224),
-                      strokeWidth: polylineStrokeWidth, // Ketebalan 8.0
-                    ),
-                  ],
-                ),
-
-              // Marker Titik Awal dan Akhir
-              if (_startPoint != null && _endPoint != null)
-                MarkerLayer(
-                  markers: [
-                    // Marker Titik Awal (Start Point) - Warna Hijau
-                    Marker(
-                      point: _startPoint!,
-                      width: 40,
-                      height: 40,
-                      child: const Icon(
-                        Icons.run_circle,
-                        color: Colors.green, // Warna Hijau untuk START
-                        size: 40,
-                      ),
-                    ),
-                    // Marker Titik Akhir (End Point) - Warna Merah
-                    Marker(
-                      point: _endPoint!,
-                      width: 40,
-                      height: 40,
-                      child: const Icon(
-                        Icons.flag,
-                        color: Color(0xFFE54721), // Warna Merah-Oranye untuk FINISH
-                        size: 35,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
+            },
+            
+            // =======================================================
+            // PETA SEKARANG SEPENUHNYA INTERAKTIF (Semua Gesture Aktif)
+            zoomControlsEnabled: true,
+            zoomGesturesEnabled: true, 
+            scrollGesturesEnabled: true, 
+            tiltGesturesEnabled: true, // Aktifkan gesture miring
+            rotateGesturesEnabled: true, // Aktifkan gesture putar
+            // =======================================================
+            
           ),
+          
           // Header & summary
           Positioned(
             top: 40,
@@ -189,6 +192,20 @@ class LariFinishPage extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         '$calories Kcal',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Pace
+                  Row(
+                    children: [
+                      const Icon(Icons.speed, color: Color(0xFFE54721), size: 28),
+                      const SizedBox(width: 8),
+                      const Text('PACE', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${_calculatePace()} min/km',
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
                       ),
                     ],

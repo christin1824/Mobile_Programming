@@ -4,18 +4,20 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-    <!-- Izin WRITE_EXTERNAL_STORAGE tidak diperlukan lagi untuk API 30+ -->
-    <!-- Jika Anda menargetkan API 33+, tambahkan izin ini untuk Galeri: -->
-    <!-- <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/> -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/> 
 
     <application
         android:label="Stridez"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">
         
+        <meta-data 
+            android:name="com.google.android.geo.API_KEY" 
+            android:value="AIzaSyBHIbHgPlrxkV8u4b8nCbpfLKsJTo3eQQY"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -26,14 +28,10 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             
-            <meta-data 
-                android:name="com.google.android.geo.API_KEY" 
-                android:value="YOUR_API_KEY"/>
-
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
-                
+            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -46,17 +44,13 @@
             
     </application>
 
-    <!-- INI ADALAH BAGIAN TAMBAHAN KRUSIAL UNTUK image_picker di Android 11/API 30+ -->
     <queries>
-        <!-- Memungkinkan aplikasi melihat dan berinteraksi dengan aplikasi kamera -->
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
-        <!-- Memungkinkan aplikasi melihat dan berinteraksi dengan aplikasi file picker/galeri -->
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
         </intent>
-        
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />

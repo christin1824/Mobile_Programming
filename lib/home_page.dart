@@ -1,8 +1,10 @@
 import 'dart:math';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'lari_page.dart';
 import 'akun_page.dart'; // Pastikan AccountPage sudah diimpor
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -13,6 +15,35 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+  String _displayName = 'User';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisplayName();
+  }
+  
+  Future<void> _loadDisplayName() async {
+    // Coba load dari SharedPreferences dulu (nama yang disimpan di akun_page)
+    final prefs = await SharedPreferences.getInstance();
+    final savedName = prefs.getString('user_display_name');
+    
+    if (savedName != null && savedName.isNotEmpty) {
+      setState(() {
+        _displayName = savedName;
+      });
+    } else {
+      // Fallback ke Firebase Auth jika belum ada di SharedPreferences
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        setState(() {
+          _displayName = (user.displayName != null && user.displayName!.isNotEmpty) 
+              ? user.displayName! 
+              : (user.email ?? 'User');
+        });
+      }
+    }
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -84,23 +115,23 @@ class _HomePageState extends State<HomePage> {
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(50)),
             ),
             padding: const EdgeInsets.only(top: 75, left: 24, right: 24),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Selamat pagi, User!',
-                  style: TextStyle(
+                  'Selamat pagi, $_displayName!',
+                  style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 35,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 8),
-                Text(
+                const SizedBox(height: 8),
+                const Text(
                   'Siap olahraga hari ini?',
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: 18,
+                    fontSize: 15,
                     fontWeight: FontWeight.normal,
                   ),
                 ),
@@ -162,8 +193,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildWeeklyProgress() {
-    // Hari dalam seminggu (Indonesia): Senin, Selasa, Rabu, Kamis, Jumat, Sabtu, Minggu
-    final dayInitials = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
     // Cari Senin minggu ini
     final now = DateTime.now();
     final monday = now.subtract(Duration(days: now.weekday - 1));
@@ -186,10 +215,16 @@ class _HomePageState extends State<HomePage> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: List.generate(7, (index) {
             final progress = progressValues[index];
-            final color = progress > 0 ? Colors.orange : Colors.grey;
             final date = weekDates[index];
             // Inisial hari: S, S, R, K, J, S, M (Senin-Minggu)
             final dayInitial = DateFormat.E('id_ID').format(date)[0].toUpperCase();
+            
+            // Cek apakah ini hari ini (untuk highlight hari dan tanggal)
+            final isToday = date.year == now.year && 
+                           date.month == now.month && 
+                           date.day == now.day;
+            // Hanya hari ini yang kuning, yang lain abu-abu
+            final textColor = isToday ? Colors.orange : Colors.grey;
             
             return Column(
               children: [
@@ -207,11 +242,17 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 4),
                 Text(
                   dayInitial,
-                  style: TextStyle(color: color),
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
                 Text(
                   date.day.toString(),
-                  style: TextStyle(color: color),
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
               ],
             );

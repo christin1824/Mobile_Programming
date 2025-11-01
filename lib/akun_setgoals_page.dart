@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'akun_page.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Asumsi class AccountPage ada di sini jika file akun_page.dart tidak disertakan
 
@@ -590,20 +590,33 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
                 height: 55,
                 margin: const EdgeInsets.only(top: 8, bottom: 24),
                 child: ElevatedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Sasaran disimpan!')),
-                    );
+                  onPressed: () async {
+                    // Simpan goals ke SharedPreferences
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setDouble('target_langkah', _langkahTarget);
+                    await prefs.setDouble('target_jarak', _jarakTarget);
+                    await prefs.setDouble('target_durasi', _durasiTarget);
                     
-                    // --- LOGIKA MENGEMBALIKAN DATA PENTING KE ACCOUNT PAGE ---
-                    Navigator.pop(
-                        context,
-                        {
-                          'tinggiBadan': _tinggiBadan,
-                          'jenisKelamin': _jenisKelamin,
-                          'beratAwal': _beratBadan.toDouble(),
-                        }
-                    );
+                    // Simpan tanggal setting goals hari ini
+                    final today = DateTime.now();
+                    final todayString = '${today.year}-${today.month}-${today.day}';
+                    await prefs.setString('goals_set_date', todayString);
+                    
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Sasaran disimpan!')),
+                      );
+                      
+                      // --- LOGIKA MENGEMBALIKAN DATA PENTING KE ACCOUNT PAGE ---
+                      Navigator.pop(
+                          context,
+                          {
+                            'tinggiBadan': _tinggiBadan,
+                            'jenisKelamin': _jenisKelamin,
+                            'beratAwal': _beratBadan.toDouble(),
+                          }
+                      );
+                    }
                     // =========================================================
                   },
                   style: ElevatedButton.styleFrom(

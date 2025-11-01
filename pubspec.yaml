@@ -37,6 +37,12 @@ dependencies:
   geolocator: ^14.0.2 # Versi ini mungkin perlu diperbarui
   latlong2: ^0.9.1
   geocoding: ^2.1.0
+  google_maps_flutter: ^2.2.0
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
+  cloud_firestore: ^5.4.0   # atau versi terbaru
+  shared_preferences: ^2.2.2
 
   image_picker: ^1.1.2
 
@@ -87,6 +93,10 @@ flutter:
     - assets/icons/langkah_kecil.png  
     - assets/icons/durasi_logo.png 
     - assets/icons/lari_logo.png 
+    - assets/icons/Trophy.png 
+    - assets/icons/Ribbon.png 
+    - assets/icons/Party_Popper.png 
+    - assets/icons/Confetti_Ball.png 
   
 
   fonts:

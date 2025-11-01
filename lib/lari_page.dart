@@ -1,9 +1,9 @@
 import 'dart:async'; // Import untuk Timer
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+import 'package:latlong2/latlong.dart' as latlong;
 import 'package:intl/intl.dart';
 import 'package:geocoding/geocoding.dart';
 
@@ -52,23 +52,21 @@ class _LariPageState extends State<LariPage> {
   String _targetType = 'Target Jarak'; // atau 'Target Waktu' atau 'Tanpa Target'
   double _targetJarakValue = 2.0; // km
   int _targetWaktuValue = 15; // menit
-  LatLng? _currentLocation;
+  latlong.LatLng? _currentLocation;
   bool _isLoading = true;
-  final MapController _mapController = MapController();
   StreamSubscription<Position>? _positionStreamSubscription;
 
   /// Mulai stream lokasi agar marker update otomatis saat user bergerak
   void _startPositionStream() {
     _positionStreamSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.best),
     ).listen((Position position) {
+      print('Position: $position'); // Log untuk debugging
       if (!mounted) return;
       setState(() {
-        _currentLocation = LatLng(position.latitude, position.longitude);
+        _currentLocation = latlong.LatLng(position.latitude, position.longitude);
       });
-      _updateAddressFromLocation();
-      // Opsional: auto center map ke posisi baru
-      // _mapController.move(_currentLocation!, 17.0);
+      _updateAddressFromLocation(); // Perbarui alamat secara realtime
     });
   }
 
@@ -96,7 +94,7 @@ class _LariPageState extends State<LariPage> {
         setState(() {
           _isLoading = false;
           // Set lokasi default jika GPS gagal, agar peta tetap muncul.
-          _currentLocation ??= const LatLng(-7.2820, 112.7944);
+          _currentLocation ??= const latlong.LatLng(-7.2820, 112.7944);
         });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Gagal mendapatkan lokasi. Menampilkan lokasi default.'),
@@ -138,22 +136,32 @@ class _LariPageState extends State<LariPage> {
       return;
     }
 
+    print('Masuk ke _determinePosition');
+    print('Current Location: $_currentLocation');
+
+    // Tambahkan log di setiap langkah untuk memeriksa alur eksekusi kode
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
         timeLimit: const Duration(seconds: 5),
       );
+      print('Position: $position');
       if (!mounted) return;
       setState(() {
-        _currentLocation = LatLng(position.latitude, position.longitude);
+        _currentLocation = latlong.LatLng(position.latitude, position.longitude);
         _isLoading = false;
       });
-      _mapController.move(_currentLocation!, 17.0);
     } catch (e) {
-      print("Error mendapatkan lokasi: $e");
+      print('Error mendapatkan lokasi: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+
+    // Fallback: Jika lokasi masih null, gunakan lokasi default
+    if (_currentLocation == null) {
+      print('Lokasi tidak tersedia, menggunakan lokasi default');
+      _currentLocation = const latlong.LatLng(-7.2820, 112.7944);
     }
   }
 
@@ -163,35 +171,21 @@ class _LariPageState extends State<LariPage> {
       body: Stack(
         children: [
           // === PETA INTERAKTIF ===
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter:
-                  _currentLocation ?? const LatLng(-7.2820, 112.7944), // Default: ITS
-              initialZoom: 17.0,
+          gmaps.GoogleMap(
+            initialCameraPosition: gmaps.CameraPosition(
+              target: _currentLocation != null
+                  ? gmaps.LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
+                  : const gmaps.LatLng(-7.2820, 112.7944),
+              zoom: 17.0,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://api.maptiler.com/maps/openstreetmap/{z}/{x}/{y}.png?key=oRyZXl1bSYtekMhN6tw7',
-                // Menggunakan MapTiler OpenStreetMap style
-                userAgentPackageName: 'com.stridez.app',
-              ),
+            markers: {
               if (_currentLocation != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      width: 80.0,
-                      height: 80.0,
-                      point: _currentLocation!,
-                      child: const Icon(
-                        Icons.my_location, // Ganti ikon agar lebih jelas
-                        color: Colors.blue,
-                        size: 30.0,
-                      ),
-                    ),
-                  ],
+                gmaps.Marker(
+                  markerId: const gmaps.MarkerId('currentLocation'),
+                  position: gmaps.LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+                  icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueBlue),
                 ),
-            ],
+            },
           ),
           // Tampilkan layar loading di atas peta jika sedang mencari lokasi
           if (_isLoading)

@@ -1,11 +1,15 @@
-import 'dart:math';
 import 'dart:io'; // WAJIB: Untuk menggunakan kelas File dan FileImage
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'home_page.dart';
 import 'lari_page.dart';
 import 'akun_setgoals_page.dart'; 
 import 'akun_riwayatlari_page.dart';
 import 'akun_profile.dart'; // Pastikan ini ada
+import 'login_page.dart';
+import 'akun_achivement.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -77,7 +81,16 @@ class _AccountPageState extends State<AccountPage> {
         // Pastikan path foto diperbarui (bisa null jika dibatalkan)
         _profileImagePath = result['userProfilePath'] as String?;
       });
+      
+      // Simpan userName ke SharedPreferences
+      _saveUserName(_userName);
     }
+  }
+  
+  // Fungsi untuk menyimpan userName ke SharedPreferences
+  Future<void> _saveUserName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_display_name', name);
   }
   // --------------------------------------------------------
 
@@ -99,6 +112,31 @@ class _AccountPageState extends State<AccountPage> {
   }
 
   double get _calculatedWeightTarget => _calculateIdealBodyWeight();
+
+  // --- FUNGSI LOGOUT ---
+  Future<void> _handleLogout() async {
+    try {
+      // Logout dari Google Sign-In jika sedang login dengan Google
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      if (await googleSignIn.isSignedIn()) {
+        await googleSignIn.signOut();
+      }
+      
+      // Logout dari Firebase Auth
+      await FirebaseAuth.instance.signOut();
+      
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saat logout: $e')),
+      );
+    }
+  }
 
   // --- LOGIKA NAVIGASI DENGAN MENUNGGU HASIL (SET GOALS) ---
   void _navigateToSetGoals() async {
@@ -150,58 +188,91 @@ class _AccountPageState extends State<AccountPage> {
                 color: Color(0xFFE54721),
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(50)),
               ),
-              child: Column(
+              child: Stack(
                 children: [
-                  SizedBox(height: topPadding), 
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            // HAPUS 'const' di sini karena CircleAvatar di dalamnya dinamis
-                            CircleAvatar( 
-                              radius: 40, 
-                              backgroundColor: Colors.white,
-                              child: CircleAvatar(
-                                radius: 38, 
-                                // *MENGGUNAKAN FUNGSI BARU UNTUK MENAMPILKAN FOTO*
-                                // Fungsi ini non-const, jadi widget pembungkusnya juga tidak boleh const
-                                backgroundImage: _getProfileImage(),
-                              ),
-                            ),
-                            
-                            // ICON EDIT (PENSIL) - PANGGIL FUNGSI NAVIGASI ASYNC
-                            GestureDetector(
-                              onTap: _navigateToProfileEdit, 
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFE54721), width: 1.5),
-                                ),
-                                child: const Icon(Icons.edit, color: Color(0xFFE54721), size: 18),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Tampilkan data profil terbaru
-                        Text(
-                          _userName, 
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
+                  // Menu titik tiga di pojok kanan atas
+                  Positioned(
+                    top: topPadding + 8,
+                    right: 16,
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
+                      onSelected: (value) {
+                        if (value == 'logout') {
+                          _handleLogout();
+                        }
+                      },
+                      itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem<String>(
+                          value: 'logout',
+                          child: Row(
+                            children: [
+                              Icon(Icons.logout, color: Color(0xFFE54721)),
+                              SizedBox(width: 8),
+                              Text('Logout'),
+                            ],
                           ),
                         ),
-                        Text(
-                          _userEmail, 
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: 16,
+                      ],
+                    ),
+                  ),
+                  // Konten utama header
+                  Center(
+                    child: Column(
+                      children: [
+                        SizedBox(height: topPadding), 
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Stack(
+                                alignment: Alignment.bottomRight,
+                                children: [
+                                  // HAPUS 'const' di sini karena CircleAvatar di dalamnya dinamis
+                                  CircleAvatar( 
+                                    radius: 40, 
+                                    backgroundColor: Colors.white,
+                                    child: CircleAvatar(
+                                      radius: 38, 
+                                      // *MENGGUNAKAN FUNGSI BARU UNTUK MENAMPILKAN FOTO*
+                                      // Fungsi ini non-const, jadi widget pembungkusnya juga tidak boleh const
+                                      backgroundImage: _getProfileImage(),
+                                    ),
+                                  ),
+                                  
+                                  // ICON EDIT (PENSIL) - PANGGIL FUNGSI NAVIGASI ASYNC
+                                  GestureDetector(
+                                    onTap: _navigateToProfileEdit, 
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: const Color(0xFFE54721), width: 1.5),
+                                      ),
+                                      child: const Icon(Icons.edit, color: Color(0xFFE54721), size: 18),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              // Tampilkan data profil terbaru
+                              Text(
+                                _userName, 
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _userEmail, 
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -242,6 +313,19 @@ class _AccountPageState extends State<AccountPage> {
                           Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const AkunRiwayatLariPage()),
+                        );
+                       },
+                    ),
+                    const SizedBox(height: 15),
+
+                    // Tombol Achievement Board
+                    _buildMenuButton(
+                      title: 'Achievement Board',
+                      icon: Icons.emoji_events,
+                      onTap: () { 
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const AkunAchievementPage()),
                         );
                        },
                     ),
