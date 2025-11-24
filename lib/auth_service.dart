@@ -4,7 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // 1. Sign In dengan Email/Password (Sudah Ada)
+  // 1. Sign In dengan Email/Password (Login - Hanya memeriksa kredensial)
+  // Mengembalikan pesan error (String) jika gagal, atau null jika berhasil.
   Future<String?> signInWithEmailPassword(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -16,13 +17,14 @@ class AuthService {
     }
   }
 
-  // 2. Sign In dengan Google
-  Future<String?> signInWithGoogle() async {
+  // 2. Sign In dengan Google (Login/Pendaftaran via Google)
+  // Mengembalikan UserCredential jika berhasil, atau null jika gagal.
+  Future<UserCredential?> signInWithGoogle() async {
     try {
       // Mulai proses interaktif Google Sign In
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        return 'Login Google dibatalkan.'; // Pengguna membatalkan proses
+        return null; // Pengguna membatalkan proses
       }
 
       // Mendapatkan kredensial dari Google
@@ -33,18 +35,40 @@ class AuthService {
       );
 
       // Sign in ke Firebase dengan kredensial Google
-      await _auth.signInWithCredential(credential);
-      return null;
+      // Ini akan membuat user baru jika belum ada (Sign Up) atau login (Sign In).
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      
+      // Mengembalikan credential untuk mendapatkan UID
+      return userCredential;
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      print('Firebase Google Sign In Error: ${e.message}');
+      return null;
     } catch (e) {
       // Ini sering terjadi jika konfigurasi Android/iOS belum lengkap
-      return 'Gagal Sign In Google. Pastikan konfigurasi platform sudah benar: ${e.toString()}';
+      print('Gagal Sign In Google: ${e.toString()}');
+      return null;
     }
   }
 
-  // 3. Sign In dengan Nomor Telepon (Hanya bagian inisiasi)
-  // Catatan: Ini lebih kompleks dan membutuhkan penanganan State di UI
+  // 3. Sign Up dengan Email/Password (Pendaftaran)
+  // Fungsi ini digunakan untuk membuat akun baru dan MENGEMBALIKAN UserCredential
+  // agar kita bisa mengambil UID untuk sinkronisasi.
+  Future<UserCredential?> signUpWithEmailPassword(String email, String password) async {
+    try {
+      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      // PENTING: Mengembalikan credential yang berisi UID!
+      return userCredential; 
+    } on FirebaseAuthException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+  
+  // 4. Sign In dengan Nomor Telepon (Hanya bagian inisiasi)
   Future<void> verifyPhoneNumber(
     String phoneNumber,
     Function(PhoneAuthCredential) verificationCompleted,
@@ -59,5 +83,13 @@ class AuthService {
       codeSent: codeSent,
       codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
     );
+  } // <--- Penutup fungsi verifyPhoneNumber yang sebelumnya hilang
+
+  // 5. Getter untuk mendapatkan UID atau User saat ini (berguna untuk API calls)
+  User? get currentUser => _auth.currentUser;
+
+  // 6. Logout
+  Future<void> signOut() async {
+    await _auth.signOut();
   }
 }

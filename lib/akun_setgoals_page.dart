@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async'; // Dipertahankan untuk TimeoutException
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_frontend/backend_service.dart';
 
-// Asumsi class AccountPage ada di sini jika file akun_page.dart tidak disertakan
-
+// Catatan: Asumsi class AccountPage sudah tersedia
 
 class AkunSetGoalsPage extends StatefulWidget {
   const AkunSetGoalsPage({super.key});
@@ -18,18 +20,145 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
   int _beratBadan = 78; // kg (Ini adalah Berat Badan Awal / Saat Ini)
   int _usia = 25;
   
-  // Goals Lari (tidak dikembalikan, hanya untuk kepentingan halaman ini)
+  // Goals Lari
   double _langkahTarget = 8000; // steps
   double _jarakTarget = 25; // km
   double _durasiTarget = 60; // menit
+  
+  // Keys SharedPreferences
+  static const _keyBeratAwal1 = 'berat_awal';
+  static const _keyBeratAwal2 = 'beratAwal'; // fallback
+  static const _keyTinggi = 'tinggi_badan';
+  static const _keyJenisKelamin = 'jenis_kelamin';
+  static const _keyUsia = 'usia';
 
-  // === WIDGET PEMBANGUN UI KECIL ===
+  // --- Loading State ---
+  bool _isSavingGoals = false;
+  // -------------------------
 
-  // Warna dan Konstanta Desain
+  // + Pindah ke atas: konstanta warna (sebelumnya muncul di blok duplikat bawah)
   static const Color primaryColor = Color.fromARGB(255, 233, 77, 38);
   static const Color secondaryBoxColor = Color.fromARGB(255, 255, 230, 220);
   static const Color darkTextColor = Color.fromARGB(255, 140, 70, 50);
 
+  // --- LOGIC HELPERS ---
+
+  // + SnackBar helper (tetap)
+  void _showSnackBar(String message, {Color color = Colors.red}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: color),
+      );
+    }
+  }
+
+  // + Simpan profil dasar agar bisa di-load di akun_profile.dart
+  Future<void> _persistUserProfileData(SharedPreferences prefs) async {
+    // FIXED: Menyimpan data ke key yang konsisten dengan loading/saving lokal
+    await prefs.setDouble('user_weight', _beratBadan.toDouble());
+    await prefs.setDouble('user_height', _tinggiBadan);
+    await prefs.setString('user_gender', _jenisKelamin);
+    await prefs.setInt('user_age', _usia);
+
+    // Simpan keys yang digunakan di tempat lain (jika masih digunakan)
+    await prefs.setDouble('_keyBeratAwal1', _beratBadan.toDouble());
+    await prefs.setDouble('_keyBeratAwal2', _beratBadan.toDouble());
+    await prefs.setDouble('_keyTinggi', _tinggiBadan);
+    await prefs.setString(_keyJenisKelamin, _jenisKelamin);
+    await prefs.setInt(_keyUsia, _usia);
+  }
+
+  // + Pertahankan satu versi final fungsi kirim goals (ambil yang lengkap di bagian bawah)
+  Future<bool> _sendGoalsToBackend() async {
+    // 1. Ambil UID dari pengguna yang sedang login
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        _showSnackBar('Error: Anda harus login untuk menyimpan goals.', color: Colors.red);
+      }
+      return false; 
+    }
+    
+    // Siapkan data dasar yang akan diulang di setiap payload
+    final basePayload = {
+      // --- PERBAIKAN KRUSIAL UNTUK USER ID ---
+      'user_id': user.uid, // DTO: @JsonProperty("user_id")
+      'userId': user.uid,  // DTO: Fallback untuk variabel 'userId' (tanpa @JsonProperty)
+      // -------------------------------------
+      
+      // Data Profil
+      'gender': _jenisKelamin, // DTO: @JsonProperty("gender")
+      'height_cm': _tinggiBadan.toInt(), // DTO: @JsonProperty("height_cm")
+      'weight_kg': _beratBadan.toDouble(), // DTO: @JsonProperty("weight_kg")
+      'age': _usia, // DTO: @JsonProperty("age")
+      
+      // Kolom Optional/Wajib Lain
+      'target_weight_kg': null, // DTO: @JsonProperty("target_weight_kg") -> Disimpan null jika tidak diisi
+      'level': 'Sedang', // DTO: level -> Dibuat non-null karena Anda memiliki level default
+      'time_period': 'DAILY', // FIX: Kolom wajib MySQL
+      'date': DateTime.now().toIso8601String().substring(0, 10), 
+    };
+
+    // DAFTAR 3 TUJUAN UNTUK DIKIRIM SATU PER SATU
+    final List<Map<String, dynamic>> goalsToSend = [
+      // 1. LANGKAH TARGET
+      {
+        ...basePayload, 
+        'goal_type': 'LANGKAH_TARGET',
+        'target_value': _langkahTarget.toInt(), 
+        'unit': 'Steps',
+      },
+      // 2. JARAK TARGET
+      {
+        ...basePayload, 
+        'goal_type': 'JARAK_LARI_TARGET', 
+        'target_value': _jarakTarget, 
+        'unit': 'KM',
+      },
+      // 3. DURASI TARGET
+      {
+        ...basePayload, 
+        'goal_type': 'DURASI_TARGET', 
+        'target_value': _durasiTarget.toInt(), 
+        'unit': 'Menit',
+      },
+    ];
+
+    int successCount = 0;
+    
+    // Kirim 3 Payload secara berurutan
+    for (final payload in goalsToSend) {
+        try {
+            // Panggilan API dengan Timeout
+            final resp = await BackendService.sendGoals(payload).timeout(const Duration(seconds: 10)); 
+            
+            if (resp != null && (resp.statusCode == 200 || resp.statusCode == 201)) {
+                successCount++;
+            } else {
+                // Tampilkan pesan error API jika gagal
+                if (mounted) {
+                     _showSnackBar('Gagal ${payload['goal_type']}: Status ${resp?.statusCode}', color: Colors.red);
+                }
+            }
+        } on TimeoutException {
+             // Laporan Timeout
+             if (mounted) {
+                 _showSnackBar('Sinkronisasi Timeout! Server lambat merespons.', color: Colors.orange);
+             }
+        } catch (e) {
+             // Laporan error lain (misal SocketException)
+             if (mounted) {
+                 _showSnackBar('Koneksi Gagal: ${e.toString()}', color: Colors.red);
+             }
+        }
+    }
+    
+    // Tampilkan hasil akhir
+    return successCount == 3;
+  }
+
+  // --- Bagian Widget Helpers (Dipersingkat untuk brevity) ---
+  
   // 1. Tombol Pria/Wanita
   Widget _buildGenderButton(String gender) {
     bool isSelected = _jenisKelamin == gender;
@@ -183,7 +312,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     required ValueChanged<double> onChanged,
     required String assetPath, // Selalu gunakan assetPath
     required String level1,
-    required String level2,
+    required String level2, 
     required String level3,
   }) {
     double levelValue = (max - min) / 3;
@@ -473,9 +602,9 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
+    // ... (Kode build Anda yang sebenarnya) ...
     const primaryBackgroundColor = Color.fromARGB(255, 241, 114, 64); 
     
     return Scaffold(
@@ -584,40 +713,68 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
               ),
               const SizedBox(height: 20),
               
-              // === TOMBOL SIMPAN (LOGIKA BARU) ===
+              // === TOMBOL SIMPAN ===
               Container(
                 width: double.infinity,
                 height: 55,
                 margin: const EdgeInsets.only(top: 8, bottom: 24),
                 child: ElevatedButton(
-                  onPressed: () async {
-                    // Simpan goals ke SharedPreferences
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setDouble('target_langkah', _langkahTarget);
-                    await prefs.setDouble('target_jarak', _jarakTarget);
-                    await prefs.setDouble('target_durasi', _durasiTarget);
+                  onPressed: _isSavingGoals ? null : () async {
+                    // 1. Tampilkan loading
+                    setState(() => _isSavingGoals = true);
                     
-                    // Simpan tanggal setting goals hari ini
-                    final today = DateTime.now();
-                    final todayString = '${today.year}-${today.month}-${today.day}';
-                    await prefs.setString('goals_set_date', todayString);
+                    bool synced = false;
                     
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Sasaran disimpan!')),
-                      );
+                    try {
+                      // 2. Coba sinkron ke backend
+                      synced = await _sendGoalsToBackend();
+
+                      // 3. Simpan lokal
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setDouble('target_langkah', _langkahTarget);
+                      await prefs.setDouble('target_jarak', _jarakTarget);
+                      await prefs.setDouble('target_durasi', _durasiTarget);
                       
-                      // --- LOGIKA MENGEMBALIKAN DATA PENTING KE ACCOUNT PAGE ---
-                      Navigator.pop(
-                          context,
-                          {
-                            'tinggiBadan': _tinggiBadan,
-                            'jenisKelamin': _jenisKelamin,
-                            'beratAwal': _beratBadan.toDouble(),
-                          }
+                      final today = DateTime.now();
+                      await prefs.setString('goals_set_date', '${today.year}-${today.month}-${today.day}');
+                      
+                      await _persistUserProfileData(prefs);
+
+                      if (!mounted) return;
+                       
+                      // 4. Notifikasi hasil
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            synced
+                              ? 'Sasaran & profil disimpan. Sinkronisasi berhasil.'
+                              : 'Sasaran & profil disimpan. Sinkronisasi gagal.',
+                          ),
+                          backgroundColor: synced ? Colors.green : Colors.orange,
+                        ),
                       );
+
+                      // 5. Navigasi
+                      Navigator.pop(
+                        context,
+                        {
+                          'tinggiBadan': _tinggiBadan,
+                          'jenisKelamin': _jenisKelamin,
+                          'beratAwal': _beratBadan.toDouble(),
+                          'berat_awal': _beratBadan.toDouble(),
+                          'usia': _usia,
+                        },
+                      );
+                    } catch (e) {
+                      // Ini menangani error penyimpanan lokal atau error lainnya yang tidak tertangkap di _sendGoalsToBackend
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error saat menyimpan: $e')),
+                        );
+                      }
+                    } finally {
+                        if(mounted) setState(() => _isSavingGoals = false);
                     }
-                    // =========================================================
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
@@ -625,14 +782,16 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isSavingGoals 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) // <-- Tampilkan loading
+                    : const Text(
+                        'Simpan',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                 ),
               ),
             ],

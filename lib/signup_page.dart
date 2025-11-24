@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_frontend/akun_page.dart';
 import 'login_page.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // DIUNCOMMENT: Digunakan untuk otentikasi pengguna
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'home_page.dart';
+import 'backend_service.dart';
+import 'auth_service.dart'; // <--- Perubahan: Impor AuthService
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -17,6 +18,9 @@ class _SignupPageState extends State<SignupPage> {
   // GlobalKey untuk mengelola status Form dan validasi
   final _formKey = GlobalKey<FormState>();
 
+  // PERUBAHAN: Instansiasi AuthService
+  final AuthService _authService = AuthService();
+
   // Controllers untuk menangani input teks
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -27,10 +31,9 @@ class _SignupPageState extends State<SignupPage> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false; // State untuk mengelola tombol loading
-  
+
   // Untuk Google Sign-In dan Phone Auth
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
   String _verificationId = '';
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _phoneNumberController = TextEditingController();
@@ -50,51 +53,71 @@ class _SignupPageState extends State<SignupPage> {
 
   // Helper untuk menampilkan snackbar error/sukses
   void _showSnackBar(String message, {Color color = Colors.red}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-      ),
-    );
+    if (mounted) { // Tambahkan cek mounted
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+        ),
+      );
+    }
   }
 
-  // MARK: - FUNGSI GOOGLE SIGN-IN
+  // MARK: - FUNGSI PENDAFTARAN GOOGLE DENGAN SINKRONISASI (DIUBAH)
   Future<void> _signInWithGoogle() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return;
+      // 1. Panggil fungsi signInWithGoogle dari AuthService
+      final UserCredential? userCredential = await _authService.signInWithGoogle();
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+      if (userCredential == null) {
+        _showSnackBar("Pendaftaran Google dibatalkan atau gagal.");
+        return;
+      }
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
       final User? user = userCredential.user;
+      final String? uid = user?.uid;
 
-      if (user != null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign up Berhasil sebagai ${user.displayName ?? user.email}')),
-        );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
+      if (user != null && uid != null) {
+        // 2. BUAT PAYLOAD DENGAN UID FIREBASE
+        Map<String, dynamic> userDataPayload = {
+          'userId': uid, // Kunci sinkronisasi ke Spring Boot
+          'email': user.email ?? '',
+          'name': user.displayName ?? '',
+          'phone': user.phoneNumber ?? '',
+        };
+
+        // 3. PANGGIL FUNGSI SINKRONISASI KE SPRING BOOT
+        bool syncSuccess = await BackendService.createUserOnServer(context, userDataPayload);
+
+        if (syncSuccess) {
+          _showSnackBar('Pendaftaran & Sinkronisasi Berhasil!', color: Colors.green);
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        } else {
+          // Gagal sync ke MySQL, hapus user Firebase yang baru dibuat
+          await user.delete();
+          _showSnackBar('Gagal sinkronisasi ke server. Akun Firebase dihapus.');
+        }
       }
     } catch (e) {
       print("Error Google Sign In: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Gagal sign up dengan Google. Coba lagi."),
+          content: Text("Gagal daftar dengan Google. Coba lagi."),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if(mounted) setState(() => _isLoading = false);
     }
   }
 
-  // MARK: - FUNGSI PHONE AUTH
+  // MARK: - FUNGSI PHONE AUTH (TETAP SAMA)
   Future<void> _verifyPhoneNumber(String phoneNumber) async {
     if (phoneNumber.length < 10) {
       if (mounted) {
@@ -104,8 +127,9 @@ class _SignupPageState extends State<SignupPage> {
       }
       return;
     }
-    
+
     await _auth.verifyPhoneNumber(
+      // ... (Bagian verifikasi telepon tetap sama) ...
       phoneNumber: phoneNumber,
       verificationCompleted: (PhoneAuthCredential credential) async {
         await _auth.signInWithCredential(credential);
@@ -134,7 +158,7 @@ class _SignupPageState extends State<SignupPage> {
         setState(() {
           _verificationId = verificationId;
         });
-        _showOtpInputModal(context, phoneNumber); 
+        _showOtpInputModal(context, phoneNumber);
       },
       codeAutoRetrievalTimeout: (String verificationId) {
         setState(() {
@@ -164,7 +188,7 @@ class _SignupPageState extends State<SignupPage> {
         smsCode: _otpController.text.trim(),
       );
       await _auth.signInWithCredential(credential);
-      
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign up berhasil dengan nomor telepon!')),
@@ -184,6 +208,7 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
+// ... (Fungsi modal tetap sama) ...
   void _showOtpInputModal(BuildContext context, String phoneNumber) {
     showModalBottomSheet(
       context: context,
@@ -304,7 +329,8 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
-  // Fungsi untuk signup biasa (email & password)  // Fungsi untuk menangani proses pendaftaran
+
+  // MARK: - FUNGSI PENDAFTARAN EMAIL & PASSWORD (LOGIKA SINKRONISASI BARU)
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -315,6 +341,7 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
+    if (_isLoading) return;
     setState(() {
       _isLoading = true;
     });
@@ -325,33 +352,52 @@ class _SignupPageState extends State<SignupPage> {
     final String password = _passwordController.text;
 
     try {
-      // 1. Buat pengguna baru di Firebase Authentication
-      final UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      
+      // 1. Buat pengguna baru di Firebase Authentication (Gunakan AuthService)
+      final UserCredential? userCredential = await _authService.signUpWithEmailPassword(email, password);
+
+      if (userCredential == null) {
+        // Peringatan umum karena error spesifik ditangani di AuthService
+        _showSnackBar('Pendaftaran Firebase Gagal. Cek email atau password.');
+        return;
+      }
+
       // Ambil UID dari pengguna yang baru dibuat
-      final String uid = userCredential.user!.uid;
+      final String? uid = userCredential.user!.uid;
 
-      // 2. Simpan data tambahan ke Firestore
-      // LOGIKA FIRESTORE TELAH DIPERBARUI SESUAI PERMINTAAN ANDA
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'user_id': uid,
+      // 2. PREPARASI DATA SINKRONISASI KE SPRING BOOT
+      Map<String, dynamic> userDataPayload = {
+        'userId': uid, // <--- Kunci Utama: UID dari Firebase
         'name': name,
-        'phone': phone, // Menggunakan controller phone yang sudah ada
+        'phone': phone,
         'email': email,
-        'join_date': FieldValue.serverTimestamp(),
-        'weight_kg': null,
-        'target_weight_kg': null,
-        'height_cm': null,
-      });
+      };
 
-      // Navigasi berhasil
-      _showSnackBar('Pendaftaran berhasil!', color: Colors.green);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AccountPage()),
-      );
+      // 3. PANGGIL FUNGSI SINKRONISASI KE SPRING BOOT (MySQL)
+      bool syncSuccess = await BackendService.createUserOnServer(context, userDataPayload);
+
+      if (syncSuccess) {
+        _showSnackBar('Pendaftaran & Sinkronisasi berhasil!', color: Colors.green);
+
+        // Navigasi ke halaman Akun/Set Goals
+        // Simpan juga ke SharedPreferences agar profil langsung tampil di AccountPage
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_display_name', name);
+          await prefs.setString('user_email', email);
+          await prefs.setString('user_phone', phone);
+        } catch (e) {
+          debugPrint('Failed to save profile prefs: $e');
+        }
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const AccountPage()),
+        );
+      } else {
+        // Jika sinkronisasi ke Spring Boot gagal, hapus akun Firebase (rollback).
+        await userCredential.user?.delete();
+        _showSnackBar('Sinkronisasi ke server data gagal. Akun dibatalkan.');
+      }
+
     } on FirebaseAuthException catch (e) {
       String errorMessage;
       if (e.code == 'weak-password') {
@@ -363,7 +409,7 @@ class _SignupPageState extends State<SignupPage> {
       }
       _showSnackBar(errorMessage);
     } catch (e) {
-      // Tangani kesalahan lain (misalnya, Firestore error)
+      // Tangani kesalahan lain
       _showSnackBar('Terjadi kesalahan tak terduga: $e');
     } finally {
       setState(() {

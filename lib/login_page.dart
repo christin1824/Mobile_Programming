@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Wajib untuk otentikasi
-// Google Sign-In now handled by AuthService
 import 'auth_service.dart';
+import 'backend_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_page.dart';
 import 'home_page.dart';
 
@@ -28,12 +29,34 @@ class _LoginPageState extends State<LoginPage> {
   
   bool _isPasswordVisible = false;
 
-  // MARK: - FUNGSI LOGIN GOOGLE
+  // MARK: - FUNGSI LOGIN GOOGLE (LOGIKA KOREKSI)
   Future<void> _signInWithGoogle() async {
-    final result = await _authService.signInWithGoogle();
-    if (result == null) {
+    // 1. Panggil AuthService.signInWithGoogle yang mengembalikan UserCredential
+    final UserCredential? userCredential = await _authService.signInWithGoogle(); 
+
+    if (userCredential != null) {
+      // KODE BERJALAN JIKA LOGIN BERHASIL (result != null)
       if (!mounted) return;
-      final user = FirebaseAuth.instance.currentUser;
+      final user = userCredential.user; // Ambil user dari credential
+      // On login, fetch user profile from backend (do NOT create on login)
+      if (user != null) {
+        try {
+          final serverUser = await BackendService.getUserFromServer(user.uid);
+          final prefs = await SharedPreferences.getInstance();
+          if (serverUser != null) {
+            await prefs.setString('user_display_name', serverUser['name'] ?? user.displayName ?? '');
+            await prefs.setString('user_email', serverUser['email'] ?? user.email ?? '');
+            await prefs.setString('user_phone', serverUser['phone'] ?? user.phoneNumber ?? '');
+          } else {
+            // If user not present in DB, keep Firebase info locally but do not create on server
+            await prefs.setString('user_display_name', user.displayName ?? '');
+            await prefs.setString('user_email', user.email ?? '');
+            await prefs.setString('user_phone', user.phoneNumber ?? '');
+          }
+        } catch (e) {
+          debugPrint('Error fetching user from server: $e');
+        }
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Login Berhasil sebagai ${user?.displayName ?? user?.email}')),
       );
@@ -41,6 +64,70 @@ class _LoginPageState extends State<LoginPage> {
         MaterialPageRoute(builder: (context) => const HomePage()),
       );
     } else {
+      // KODE BERJALAN JIKA LOGIN GAGAL/DIBATALKAN (result == null)
+      if (!mounted) return;
+      // Pesan error ditampilkan secara umum karena error spesifik ada di dalam AuthService
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Login Google Gagal atau Dibatalkan.'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // MARK: - FUNGSI LOGIN EMAIL/PASSWORD (DIKOREKSI AGAR MENJADI METHOD TERPISAH)
+  Future<void> _signInWithEmailPassword() async {
+    final email = _nameController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email dan password tidak boleh kosong.'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // AuthService.signInWithEmailPassword mengembalikan String error atau null (sukses)
+    final String? result = await _authService.signInWithEmailPassword(email, password);
+
+    if (mounted) Navigator.of(context).pop();
+
+    if (result == null) {
+      // SUKSES
+      if (!mounted) return;
+      final user = FirebaseAuth.instance.currentUser;
+      // On sign-in, fetch user profile from backend (do NOT create on login)
+      if (user != null) {
+        try {
+          final serverUser = await BackendService.getUserFromServer(user.uid);
+          final prefs = await SharedPreferences.getInstance();
+          if (serverUser != null) {
+            await prefs.setString('user_display_name', serverUser['name'] ?? user.displayName ?? '');
+            await prefs.setString('user_email', serverUser['email'] ?? user.email ?? '');
+            await prefs.setString('user_phone', serverUser['phone'] ?? user.phoneNumber ?? '');
+          } else {
+            await prefs.setString('user_display_name', user.displayName ?? '');
+            await prefs.setString('user_email', user.email ?? '');
+            await prefs.setString('user_phone', user.phoneNumber ?? '');
+          }
+        } catch (e) {
+          debugPrint('Error fetching user from server: $e');
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login berhasil sebagai ${user?.email ?? user?.displayName}')),
+      );
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const HomePage()),
+      );
+    } else {
+      // GAGAL
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result), backgroundColor: Colors.red),
@@ -71,6 +158,25 @@ class _LoginPageState extends State<LoginPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Login Telepon Berhasil!')),
           );
+          // On phone login, fetch profile from backend (do NOT create on login)
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            try {
+              final serverUser = await BackendService.getUserFromServer(user.uid);
+              final prefs = await SharedPreferences.getInstance();
+              if (serverUser != null) {
+                await prefs.setString('user_display_name', serverUser['name'] ?? user.displayName ?? '');
+                await prefs.setString('user_email', serverUser['email'] ?? user.email ?? '');
+                await prefs.setString('user_phone', serverUser['phone'] ?? user.phoneNumber ?? '');
+              } else {
+                await prefs.setString('user_display_name', user.displayName ?? '');
+                await prefs.setString('user_email', user.email ?? '');
+                await prefs.setString('user_phone', user.phoneNumber ?? '');
+              }
+            } catch (e) {
+              debugPrint('Error fetching user from server: $e');
+            }
+          }
           // Navigasi setelah verifikasi otomatis
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const HomePage()),
@@ -126,15 +232,28 @@ class _LoginPageState extends State<LoginPage> {
 
       await _auth.signInWithCredential(credential);
       if (mounted) {
-        // Hapus modal dari Navigator terpisah
-        // Navigator.of(context).pop(); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Login Telepon Berhasil!')),
         );
-        
-        // ** PERBAIKAN: Cek apakah widget masih mounted sebelum navigasi **
-        if (!mounted) return;
-        
+        // On phone OTP sign-in, fetch profile from backend (do NOT create on login)
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          try {
+            final serverUser = await BackendService.getUserFromServer(user.uid);
+            final prefs = await SharedPreferences.getInstance();
+            if (serverUser != null) {
+              await prefs.setString('user_display_name', serverUser['name'] ?? user.displayName ?? '');
+              await prefs.setString('user_email', serverUser['email'] ?? user.email ?? '');
+              await prefs.setString('user_phone', serverUser['phone'] ?? user.phoneNumber ?? '');
+            } else {
+              await prefs.setString('user_display_name', user.displayName ?? '');
+              await prefs.setString('user_email', user.email ?? '');
+              await prefs.setString('user_phone', user.phoneNumber ?? '');
+            }
+          } catch (e) {
+            debugPrint('Error fetching user from server: $e');
+          }
+        }
         // Navigasi setelah verifikasi manual OTP
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const HomePage()),
@@ -146,47 +265,6 @@ class _LoginPageState extends State<LoginPage> {
           SnackBar(content: Text("OTP salah atau kedaluwarsa: ${e.message}"), backgroundColor: Colors.red),
         );
       }
-    }
-  }
-
-  // Reusable handler for Email/Password login
-  Future<void> _signInWithEmailPassword() async {
-    final email = _nameController.text.trim();
-    final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email dan password tidak boleh kosong.'), backgroundColor: Colors.red),
-        );
-      }
-      return;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final result = await _authService.signInWithEmailPassword(email, password);
-
-    if (mounted) Navigator.of(context).pop();
-
-    if (result == null) {
-      if (!mounted) return;
-      final user = FirebaseAuth.instance.currentUser;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login berhasil sebagai ${user?.email ?? user?.displayName}')),
-      );
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomePage()),
-      );
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result), backgroundColor: Colors.red),
-      );
     }
   }
   
@@ -205,7 +283,6 @@ class _LoginPageState extends State<LoginPage> {
             keyboardType: TextInputType.phone,
             decoration: const InputDecoration(
               labelText: 'Nomor Telepon',
-              // HINT BARU: Mendorong pengguna untuk menggunakan +62
               hintText: '+628xxxxxxxxxx (Wajib)', 
             ),
           ),
@@ -229,19 +306,16 @@ class _LoginPageState extends State<LoginPage> {
                 // 1. Membersihkan karakter non-digit
                 rawPhone = rawPhone.replaceAll(RegExp(r'\s|-'), '');
 
-                // 2. LOGIKA FORMATTING OTOMATIS (Diubah untuk fokus pada +62)
+                // 2. LOGIKA FORMATTING OTOMATIS
                 if (rawPhone.startsWith('+')) {
-                  // Jika sudah dimulai dengan '+', gunakan apa adanya (misal: +62812...)
                   formattedPhone = rawPhone;
                 } else if (rawPhone.startsWith('0')) {
-                  // Jika dimulai dengan 0 (misal: 0812...), ganti dengan +62
                   formattedPhone = '+62' + rawPhone.substring(1);
                 } else {
-                  // Jika dimulai langsung dengan angka (misal: 812xxxx), tambahkan +62
                   formattedPhone = '+62' + rawPhone;
                 }
 
-                // 3. VALIDASI AKHIR: Pastikan formatnya mengandung + (untuk menghindari error Firebase)
+                // 3. VALIDASI AKHIR
                 if (!formattedPhone.startsWith('+')) {
                     ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Format harus dimulai dengan kode negara (+62)."), backgroundColor: Colors.red),
@@ -379,47 +453,8 @@ class _LoginPageState extends State<LoginPage> {
                             ],
                           ),
                           child: TextButton(
-                            onPressed: () async {
-                              final email = _nameController.text.trim();
-                              final password = _passwordController.text;
-
-                              if (email.isEmpty || password.isEmpty) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Email dan password tidak boleh kosong.'), backgroundColor: Colors.red),
-                                  );
-                                }
-                                return;
-                              }
-
-                              // Tampilkan loading modal kecil
-                              showDialog(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (ctx) => const Center(child: CircularProgressIndicator()),
-                              );
-
-                              final result = await _authService.signInWithEmailPassword(email, password);
-
-                              // Tutup loading
-                              if (mounted) Navigator.of(context).pop();
-
-                              if (result == null) {
-                                if (!mounted) return;
-                                final user = FirebaseAuth.instance.currentUser;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Login berhasil sebagai ${user?.email ?? user?.displayName}')),
-                                );
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (context) => const HomePage()),
-                                );
-                              } else {
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(result), backgroundColor: Colors.red),
-                                );
-                              }
-                            },
+                            // Diubah: Memanggil _signInWithEmailPassword
+                            onPressed: _signInWithEmailPassword, 
                             child: const Text(
                               'Masuk',
                               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -464,14 +499,14 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       hintText: 'Nama (atau Email)',
                       filled: true,
-                      fillColor: Color(0xFFFDEAE4),
+                      fillColor: const Color(0xFFFDEAE4),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Color(0xFFE54721), width: 2),
+                        borderSide: const BorderSide(color: Color(0xFFE54721), width: 2),
                       ),
                     ),
                   ),
@@ -483,14 +518,14 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       hintText: 'Kata Sandi',
                       filled: true,
-                      fillColor: Color(0xFFFDEAE4),
+                      fillColor: const Color(0xFFFDEAE4),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                         borderSide: BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Color(0xFFE54721), width: 2),
+                        borderSide: const BorderSide(color: Color(0xFFE54721), width: 2),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -510,9 +545,7 @@ class _LoginPageState extends State<LoginPage> {
                   
                   // Tombol Masuk Utama (Email/Password)
                   ElevatedButton(
-                    onPressed: () {
-                      _signInWithEmailPassword();
-                    },
+                    onPressed: _signInWithEmailPassword, // Panggil fungsi yang baru dikoreksi
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE54721),
                       foregroundColor: Colors.white,
