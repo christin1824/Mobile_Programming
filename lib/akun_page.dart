@@ -10,6 +10,9 @@ import 'akun_riwayatlari_page.dart';
 import 'akun_profile.dart'; // Pastikan ini ada
 import 'login_page.dart';
 import 'akun_achivement.dart';
+import 'backend_service.dart';
+import 'package:provider/provider.dart';
+import 'goal_settings_notifier.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -27,6 +30,7 @@ class _AccountPageState extends State<AccountPage> {
   String _userPhone = 'No. Telepon'; 
   // *STATE BARU UNTUK PATH FOTO*
   String? _profileImagePath; 
+  // SharedPreferences keys: user_display_name, user_email, user_phone, user_profile_path
   // ------------------------------------
   
   // Data dummy/state awal
@@ -52,6 +56,33 @@ class _AccountPageState extends State<AccountPage> {
         MaterialPageRoute(builder: (context) => const LariPage()),
       );
     } 
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileFromPrefsOrFirebase();
+  }
+
+  Future<void> _loadProfileFromPrefsOrFirebase() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedName = prefs.getString('user_display_name');
+      final storedEmail = prefs.getString('user_email');
+      final storedPhone = prefs.getString('user_phone');
+      final storedProfilePath = prefs.getString('user_profile_path');
+
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+
+      setState(() {
+        _userName = storedName?.isNotEmpty == true ? storedName! : (firebaseUser?.displayName ?? _userName);
+        _userEmail = storedEmail?.isNotEmpty == true ? storedEmail! : (firebaseUser?.email ?? _userEmail);
+        _userPhone = storedPhone?.isNotEmpty == true ? storedPhone! : (_userPhone);
+        _profileImagePath = storedProfilePath;
+      });
+    } catch (e) {
+      debugPrint('Error loading profile prefs: $e');
+    }
   }
 
   // --- FUNGSI NAVIGASI UNTUK EDIT PROFILE (MENGIRIM DAN MENERIMA DATA) ---
@@ -82,16 +113,32 @@ class _AccountPageState extends State<AccountPage> {
         _profileImagePath = result['userProfilePath'] as String?;
       });
       
-      // Simpan userName ke SharedPreferences
-      _saveUserName(_userName);
+      // Simpan user data ke SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_display_name', _userName);
+      await prefs.setString('user_email', _userEmail);
+      await prefs.setString('user_phone', _userPhone);
+      if (_profileImagePath != null) {
+        await prefs.setString('user_profile_path', _profileImagePath!);
+      }
+
+      // Juga sinkron ke backend lokal (update user)
+      try {
+        final firebaseUid = FirebaseAuth.instance.currentUser?.uid;
+        if (firebaseUid != null) {
+          final Map<String, dynamic> payload = {
+            'name': _userName,
+            'email': _userEmail,
+            'phone': _userPhone,
+          };
+          await BackendService.updateUserOnServer(context, firebaseUid, payload);
+        }
+      } catch (e) {
+        debugPrint('Failed to sync updated profile to server: $e');
+      }
     }
   }
   
-  // Fungsi untuk menyimpan userName ke SharedPreferences
-  Future<void> _saveUserName(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_display_name', name);
-  }
   // --------------------------------------------------------
 
   // --- FUNGSI PERHITUNGAN BERAT BADAN IDEAL (BBI) ---
@@ -354,12 +401,14 @@ class _AccountPageState extends State<AccountPage> {
   // MARK: - Widget Pembantu
 
   Widget _buildWeightCard() {
-    // Menggunakan BBI yang dihitung sebagai target
-    final double targetBBI = _calculatedWeightTarget;
-
+    // Use provider settings if available
+    // default _weightAwal and _weightSaatIni remain as fallback
+    final settings = context.watch<GoalSettingsNotifier>().settings;
+  final double targetBBI = (settings.targetWeightKg > 0) ? settings.targetWeightKg : _calculatedWeightTarget;
+    final double weightAwal = settings.weightKg.toDouble();
     // Perhitungan progress
-    final double totalRange = _weightAwal - targetBBI; 
-    final double progressMade = _weightAwal - _weightSaatIni;
+    final double totalRange = weightAwal - targetBBI; 
+    final double progressMade = weightAwal - _weightSaatIni;
     double progressValue = totalRange > 0 ? (progressMade / totalRange).clamp(0.0, 1.0) : 0.0;
     
     return Card(
@@ -406,8 +455,8 @@ class _AccountPageState extends State<AccountPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                // MENGGUNAKAN _weightAwal DARI STATE
-                _weightItem('Awal', '${_weightAwal.toInt()} kg', Colors.white), 
+                // MENGGUNAKAN _weightAwal DARI PROVIDER
+                _weightItem('Awal', '${weightAwal.toInt()} kg', Colors.white), 
                 // MENGGUNAKAN HASIL PERHITUNGAN BBI
                 _weightItem('Target (BBI)', '${targetBBI.toInt()} kg', Colors.white), 
               ],

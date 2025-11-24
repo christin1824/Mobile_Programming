@@ -1,9 +1,18 @@
-
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'login_page.dart';
+import 'home_page.dart'; // <--- Pastikan HomePage diimpor
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- Diperlukan untuk cek status
 import 'firebase_options.dart';
+
+// ✅ Tambahkan ini
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'goal_settings_notifier.dart';
+// Ganti nilai ini sesuai kebutuhan. Untuk emulator Android biasanya gunakan
+// 'http://10.0.2.2:8081', untuk perangkat fisik gunakan IP mesin dev
+const String baseUrl = 'http://192.168.43.254:8081';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +21,11 @@ void main() async {
   );
   await initializeDateFormatting('id_ID', null);
 
-  runApp(const MyApp());
+  final notifier = await GoalSettingsNotifier.loadFromPrefs();
+  runApp(ChangeNotifierProvider<GoalSettingsNotifier>.value(
+    value: notifier,
+    child: const MyApp(),
+  ));
 }
 
 class MyApp extends StatelessWidget {
@@ -27,6 +40,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange),
         useMaterial3: true,
       ),
+      // App dimulai dari SplashScreen
       home: const SplashScreen(),
     );
   }
@@ -40,18 +54,59 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  
+  // MARK: - FUNGSI NAVIGASI BARU
+  void _navigateToNextScreen() {
+    if (!mounted) return;
+    
+    // PERUBAHAN UTAMA: Cek Status Login Firebase
+    final user = FirebaseAuth.instance.currentUser;
+    
+    final Widget destination = (user != null) 
+        ? const HomePage() // Sudah login
+        : const LoginPage(); // Belum login
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => destination),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    // Tunggu 10 detik, lalu navigasi ke halaman login
-    Future.delayed(const Duration(seconds: 8), () {
-      // Periksa apakah widget masih terpasang (mounted) sebelum menavigasi
-      if (!mounted) return;
+    checkServer(); // ✅ panggil pas splash screen mulai
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-      );
+    // PERUBAHAN: Setelah waktu tunda, panggil fungsi cek status
+    Future.delayed(const Duration(seconds: 8), () {
+      _navigateToNextScreen();
     });
+  }
+
+  void checkServer() async {
+    final url = Uri.parse('$baseUrl/api/users/ping');
+
+    try {
+      final response = await http.get(url);
+      print("Response backend: ${response.body}");
+
+      // biar muncul di HP juga — defer until first frame to ensure Scaffold exists
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Backend: ${response.body}")),
+        );
+      });
+    } catch (e) {
+      print("Error: $e");
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error koneksi backend")),
+        );
+      });
+    }
   }
 
   @override

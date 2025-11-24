@@ -7,7 +7,7 @@ import 'package:latlong2/latlong.dart' as latlong;
 import 'package:intl/intl.dart';
 import 'package:geocoding/geocoding.dart';
 
-import 'home_page.dart';
+import 'home_page.dart'; 
 import 'lari_start_page.dart';
 import 'akun_page.dart'; 
 
