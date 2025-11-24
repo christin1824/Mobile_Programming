@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async'; // Dipertahankan untuk TimeoutException
+import 'dart:async'; 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_frontend/backend_service.dart';
 
@@ -36,14 +36,19 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
   bool _isSavingGoals = false;
   // -------------------------
 
-  // + Pindah ke atas: konstanta warna (sebelumnya muncul di blok duplikat bawah)
+  // Warna dan Konstanta Desain
   static const Color primaryColor = Color.fromARGB(255, 233, 77, 38);
   static const Color secondaryBoxColor = Color.fromARGB(255, 255, 230, 220);
   static const Color darkTextColor = Color.fromARGB(255, 140, 70, 50);
 
   // --- LOGIC HELPERS ---
 
-  // + SnackBar helper (tetap)
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedGoals(); // Load data saat halaman dibuka
+  }
+
   void _showSnackBar(String message, {Color color = Colors.red}) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -51,26 +56,36 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
       );
     }
   }
+  
+  // === FUNGSI LOAD DATA (Agar slider mengingat posisi terakhir) ===
+  Future<void> _loadSavedGoals() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // Load Target (jika ada, jika tidak pakai default)
+      _langkahTarget = prefs.getDouble('target_langkah') ?? 8000;
+      _jarakTarget = prefs.getDouble('target_jarak') ?? 25;
+      _durasiTarget = prefs.getDouble('target_durasi') ?? 60;
 
-  // + Simpan profil dasar agar bisa di-load di akun_profile.dart
-  Future<void> _persistUserProfileData(SharedPreferences prefs) async {
-    // FIXED: Menyimpan data ke key yang konsisten dengan loading/saving lokal
-    await prefs.setDouble('user_weight', _beratBadan.toDouble());
-    await prefs.setDouble('user_height', _tinggiBadan);
-    await prefs.setString('user_gender', _jenisKelamin);
-    await prefs.setInt('user_age', _usia);
-
-    // Simpan keys yang digunakan di tempat lain (jika masih digunakan)
-    await prefs.setDouble('_keyBeratAwal1', _beratBadan.toDouble());
-    await prefs.setDouble('_keyBeratAwal2', _beratBadan.toDouble());
-    await prefs.setDouble('_keyTinggi', _tinggiBadan);
-    await prefs.setString(_keyJenisKelamin, _jenisKelamin);
-    await prefs.setInt(_keyUsia, _usia);
+      // Load Data Fisik (Menggunakan key yang konsisten)
+      _jenisKelamin = prefs.getString('user_gender') ?? 'Pria';
+      _tinggiBadan = prefs.getDouble('user_height') ?? 170;
+      _beratBadan = prefs.getInt('user_weight') ?? 78;
+      _usia = prefs.getInt('user_age') ?? 25;
+    });
   }
 
-  // + Pertahankan satu versi final fungsi kirim goals (ambil yang lengkap di bagian bawah)
+
+  // --- FUNGSI MENGHITUNG LEVEL BERDASARKAN NILAI ---
+  String _calculateLevel(double value, double min, double max, String level1, String level2, String level3) {
+      double levelValue = (max - min) / 3;
+      if (value < min + levelValue) return level1;
+      if (value < max - levelValue * 0.5) return level2;
+      return level3;
+  }
+
+  // + Fungsi baru untuk kirim data ke backend
   Future<bool> _sendGoalsToBackend() async {
-    // 1. Ambil UID dari pengguna yang sedang login
+    // 1. Cek User Login
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (mounted) {
@@ -79,24 +94,31 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
       return false; 
     }
     
+    // --- 1. HITUNG LEVEL SEBELUM MEMBUAT PAYLOAD ---
+    final String calculatedLevel = _calculateLevel(
+        _langkahTarget, 
+        3000, 
+        15000, 
+        'Pemula', 
+        'Sedang', 
+        'Atlet' 
+    );
+
     // Siapkan data dasar yang akan diulang di setiap payload
     final basePayload = {
-      // --- PERBAIKAN KRUSIAL UNTUK USER ID ---
+      // --- PERBAIKAN NAMA KOLOM UNTUK DTO JAVA ---
       'user_id': user.uid, // DTO: @JsonProperty("user_id")
-      'userId': user.uid,  // DTO: Fallback untuk variabel 'userId' (tanpa @JsonProperty)
-      // -------------------------------------
+      'userId': user.uid,  // Fallback untuk variabel 'userId'
       
-      // Data Profil
-      'gender': _jenisKelamin, // DTO: @JsonProperty("gender")
+      'gender': _jenisKelamin, 
       'height_cm': _tinggiBadan.toInt(), // DTO: @JsonProperty("height_cm")
       'weight_kg': _beratBadan.toDouble(), // DTO: @JsonProperty("weight_kg")
-      'age': _usia, // DTO: @JsonProperty("age")
+      'age': _usia, 
       
-      // Kolom Optional/Wajib Lain
-      'target_weight_kg': null, // DTO: @JsonProperty("target_weight_kg") -> Disimpan null jika tidak diisi
-      'level': 'Sedang', // DTO: level -> Dibuat non-null karena Anda memiliki level default
-      'time_period': 'DAILY', // FIX: Kolom wajib MySQL
+      'time_period': 'DAILY',
       'date': DateTime.now().toIso8601String().substring(0, 10), 
+      'level': calculatedLevel, // FIX: Gunakan level yang dihitung
+      'target_weight_kg': null, // Dibiarkan null
     };
 
     // DAFTAR 3 TUJUAN UNTUK DIKIRIM SATU PER SATU
@@ -104,7 +126,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
       // 1. LANGKAH TARGET
       {
         ...basePayload, 
-        'goal_type': 'LANGKAH_TARGET',
+        'goal_type': 'LANGKAH_TARGET', 
         'target_value': _langkahTarget.toInt(), 
         'unit': 'Steps',
       },
@@ -157,7 +179,23 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     return successCount == 3;
   }
 
-  // --- Bagian Widget Helpers (Dipersingkat untuk brevity) ---
+  // + Simpan profil dasar agar bisa di-load di akun_profile.dart
+  Future<void> _persistUserProfileData(SharedPreferences prefs) async {
+    // FIXED: Menyimpan data ke key yang konsisten dengan loading/saving lokal
+    await prefs.setDouble('user_weight', _beratBadan.toDouble());
+    await prefs.setDouble('user_height', _tinggiBadan);
+    await prefs.setString('user_gender', _jenisKelamin);
+    await prefs.setInt('user_age', _usia);
+
+    // Simpan keys yang digunakan di tempat lain (jika masih digunakan)
+    await prefs.setDouble('_keyBeratAwal1', _beratBadan.toDouble());
+    await prefs.setDouble('_keyBeratAwal2', _beratBadan.toDouble());
+    await prefs.setDouble('_keyTinggi', _tinggiBadan);
+    await prefs.setString('_keyJenisKelamin', _jenisKelamin);
+    await prefs.setInt('_keyUsia', _usia);
+  }
+
+  // --- Bagian Widget Helpers ---
   
   // 1. Tombol Pria/Wanita
   Widget _buildGenderButton(String gender) {
@@ -602,9 +640,9 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
-    // ... (Kode build Anda yang sebenarnya) ...
     const primaryBackgroundColor = Color.fromARGB(255, 241, 114, 64); 
     
     return Scaffold(
