@@ -42,6 +42,9 @@ class _AccountPageState extends State<AccountPage> {
   String _jenisKelamin = 'Perempuan'; 
   // ---------------------------------------------
   
+  // + state baru untuk menyimpan BB awal yang berasal dari Set Goals / SharedPreferences
+  double? _initialWeight;
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -62,6 +65,7 @@ class _AccountPageState extends State<AccountPage> {
   void initState() {
     super.initState();
     _loadProfileFromPrefsOrFirebase();
+    _loadInitialWeight(); // <-- pastikan dipanggil
   }
 
   Future<void> _loadProfileFromPrefsOrFirebase() async {
@@ -82,6 +86,22 @@ class _AccountPageState extends State<AccountPage> {
       });
     } catch (e) {
       debugPrint('Error loading profile prefs: $e');
+    }
+  }
+
+  // + Fungsi pembantu: baca berat awal dari SharedPreferences (dengan beberapa fallback key)
+  Future<void> _loadInitialWeight() async {
+    final prefs = await SharedPreferences.getInstance();
+    final double? weight = prefs.getDouble('user_weight') // preferred key
+        ?? prefs.getDouble('berat_awal')
+        ?? prefs.getDouble('beratAwal')
+        ?? prefs.getDouble('bb_awal')
+        ?? prefs.getDouble('initial_weight')
+        ?? (prefs.getInt('berat_awal')?.toDouble())
+        ?? (prefs.getInt('beratAwal')?.toDouble());
+
+    if (mounted) {
+      setState(() => _initialWeight = weight);
     }
   }
 

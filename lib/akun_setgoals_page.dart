@@ -98,29 +98,25 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
   
   // Helper untuk memuat data REMOTE (Backend) - Terapkan ke STATE
   void _loadRemoteData(Map<String, dynamic> userData) {
-      // NOTE: Endpoint getUserFromServer biasanya hanya mengembalikan data profil, 
-      // bukan daftar goals. Namun, kita coba ekstrak data profil yang tersimpan 
-      // dari sinkronisasi Sign Up/Goals sebelumnya (jika Anda menyimpannya di tabel 'users').
-      
+      // NOTE: Jangan menimpa nilai lokal dengan nilai remote yang null/0
       setState(() {
-          _jenisKelamin = userData['gender'] ?? _jenisKelamin;
-          
-          // Pastikan nilai numerik dikonversi dengan aman (karena mungkin float/int di JSON)
+          final remoteGender = userData['gender'];
+          if (remoteGender is String && remoteGender.isNotEmpty) {
+            _jenisKelamin = remoteGender;
+          }
+
           if (userData.containsKey('height_cm')) {
-             _tinggiBadan = (userData['height_cm'] as num).toDouble();
+            final v = userData['height_cm'];
+            if (v is num && v > 0) _tinggiBadan = v.toDouble();
           }
           if (userData.containsKey('weight_kg')) {
-             _beratBadan = (userData['weight_kg'] as num).toInt();
+            final v = userData['weight_kg'];
+            if (v is num && v > 0) _beratBadan = v.toInt();
           }
           if (userData.containsKey('age')) {
-             _usia = (userData['age'] as num).toInt();
+            final v = userData['age'];
+            if (v is num && v > 0) _usia = v.toInt();
           }
-          
-          // Untuk memuat target goals (_langkahTarget, _jarakTarget, _durasiTarget),
-          // Anda PERLU ENDPOINT BACKEND yang mengembalikan SEMUA goals aktif
-          // (misal /api/goals/active/user/{uid}).
-          // Karena kita tidak punya endpoint goals yang spesifik, kita biarkan saja 
-          // nilai target dimuat dari SharedPreferences yang lebih andal (di _loadLocalData).
       });
   }
   // --- AKHIR FUNGSI LOAD DATA ---
@@ -147,6 +143,8 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     }
     
     // Siapkan data profil dasar (TIDAK ADA LEVEL DI SINI, level akan dihitung di bawah)
+    final targetWeight = _calculateTargetWeight();
+
     final baseProfileData = {
       // --- PERBAIKAN NAMA KOLOM UNTUK DTO JAVA ---
       'user_id': user.uid, 
@@ -161,10 +159,11 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
       // Kolom Wajib Lain
       'time_period': 'DAILY',
       'date': DateTime.now().toIso8601String().substring(0, 10), 
-      'target_weight_kg': null, // Dibiarkan null
+      // sertakan target_weight_kg di payload agar backend menyimpannya di kolom sebelah height_cm
+      'target_weight_kg': targetWeight,
     };
 
-    // DAFTAR 3 TUJUAN UNTUK DIKIRIM SATU PER SATU
+    // DAFTAR 3 TUJUAN UNTUK DIKIRIM SATU PER SATU (TANPA PAYLOAD TERPISAH UNTUK TARGET_WEIGHT)
     final List<Map<String, dynamic>> goalsToSend = [
       // 1. LANGKAH TARGET
       {
@@ -172,8 +171,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
         'goal_type': 'LANGKAH_TARGET', 
         'target_value': _langkahTarget.toInt(), 
         'unit': 'Steps',
-        // PERBAIKAN: Hitung level berdasarkan target langkah
-        'level': _calculateLevel(_langkahTarget, 3000, 15000, 'Pemula', 'Sedang', 'Atlet'), 
+        'level': _calculateLevel(_langkahTarget, 3000, 15000, 'Pemula', 'Sedang', 'Atlet'),
       },
       // 2. JARAK TARGET
       {
@@ -181,8 +179,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
         'goal_type': 'JARAK_LARI_TARGET', 
         'target_value': _jarakTarget, 
         'unit': 'KM',
-        // PERBAIKAN: Hitung level berdasarkan target jarak
-        'level': _calculateLevel(_jarakTarget, 1, 42, 'Pemula', 'Sedang', 'Atlet'), 
+        'level': _calculateLevel(_jarakTarget, 1, 42, 'Pemula', 'Sedang', 'Atlet'),
       },
       // 3. DURASI TARGET
       {
@@ -190,8 +187,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
         'goal_type': 'DURASI_TARGET', 
         'target_value': _durasiTarget.toInt(), 
         'unit': 'Menit',
-        // PERBAIKAN: Hitung level berdasarkan target durasi
-        'level': _calculateLevel(_durasiTarget, 15, 120, 'Pemula', 'Sedang', 'Atlet'), 
+        'level': _calculateLevel(_durasiTarget, 15, 120, 'Pemula', 'Sedang', 'Atlet'),
       },
     ];
 
@@ -224,8 +220,17 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
         }
     }
     
-    // Tampilkan hasil akhir
-    return successCount == 3;
+    // Tampilkan hasil akhir — cocokkan dengan jumlah payload yang dikirim
+    return successCount == goalsToSend.length;
+  }
+
+  // + HITUNG TARGET BERAT BADAN (mis. gunakan BMI target = 22)
+  double _calculateTargetWeight() {
+    final heightM = (_tinggiBadan / 100.0);
+    if (heightM <= 0) return _beratBadan.toDouble();
+    final targetBmi = 22.0;
+    final target = targetBmi * heightM * heightM;
+    return double.parse(target.toStringAsFixed(1));
   }
 
   // + Simpan profil dasar agar bisa di-load di akun_profile.dart
@@ -242,6 +247,17 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     await prefs.setDouble(_keyTinggi, _tinggiBadan);
     await prefs.setString(_keyJenisKelamin, _jenisKelamin);
     await prefs.setInt(_keyUsia, _usia);
+
+    // tambahan: target weight
+    final targetWeight = _calculateTargetWeight();
+    await prefs.setDouble('target_weight', targetWeight);
+    await prefs.setDouble('target_weight_kg', targetWeight);
+
+    // legacy compatibility
+    await prefs.setDouble('berat_awal', _beratBadan.toDouble());
+    await prefs.setDouble('beratAwal', _beratBadan.toDouble());
+    await prefs.setDouble('bb_awal', _beratBadan.toDouble());
+    await prefs.setDouble('initial_weight', _beratBadan.toDouble());
   }
 
   // --- Bagian Widget Helpers ---
@@ -809,58 +825,54 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
                   onPressed: _isSavingGoals ? null : () async {
                     // 1. Tampilkan loading
                     setState(() => _isSavingGoals = true);
-                    
-                    bool synced = false;
-                    
+
                     try {
-                      // 2. Coba sinkron ke backend
-                      synced = await _sendGoalsToBackend();
+                      // A) Simpan lokal termasuk target weight
+                      {
+                        final prefs = await SharedPreferences.getInstance();
 
-                      // 3. Simpan lokal
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setDouble('target_langkah', _langkahTarget);
-                      await prefs.setDouble('target_jarak', _jarakTarget);
-                      await prefs.setDouble('target_durasi', _durasiTarget);
-                      
-                      final today = DateTime.now();
-                      await prefs.setString('goals_set_date', '${today.year}-${today.month}-${today.day}');
-                      
-                      await _persistUserProfileData(prefs);
+                        // simpan goals
+                        await prefs.setDouble('target_langkah', _langkahTarget);
+                        await prefs.setDouble('target_jarak', _jarakTarget);
+                        await prefs.setDouble('target_durasi', _durasiTarget);
+                        final today = DateTime.now();
+                        await prefs.setString('goals_set_date', '${today.year}-${today.month}-${today.day}');
 
-                      if (!mounted) return;
-                       
-                      // 4. Notifikasi hasil
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            synced
-                              ? 'Sasaran & profil disimpan. Sinkronisasi berhasil.'
-                              : 'Sasaran & profil disimpan. Sinkronisasi gagal.',
-                          ),
-                          backgroundColor: synced ? Colors.green : Colors.orange,
-                        ),
-                      );
+                        // hitung dan simpan target weight
+                        final targetWeight = _calculateTargetWeight();
+                        await prefs.setDouble('target_weight', targetWeight);
+                        await prefs.setDouble('target_weight_kg', targetWeight);
 
-                      // 5. Navigasi
-                      Navigator.pop(
-                        context,
-                        {
+                        // simpan profil & legacy keys
+                        await _persistUserProfileData(prefs);
+
+                        // background sync
+                        _sendGoalsToBackend().then((synced) {
+                          if (!synced && mounted) _showSnackBar('Sinkronisasi gagal. Akan dicoba lagi nanti.', color: Colors.orange);
+                        });
+
+                        // pop with payload (tambahkan target_weight)
+                        Navigator.pop(context, {
                           'tinggiBadan': _tinggiBadan,
                           'jenisKelamin': _jenisKelamin,
                           'beratAwal': _beratBadan.toDouble(),
                           'berat_awal': _beratBadan.toDouble(),
+                          'user_weight': _beratBadan.toDouble(),
+                          'bb_awal': _beratBadan.toDouble(),
+                          'initial_weight': _beratBadan.toDouble(),
+                          'target_weight': targetWeight,
+                          'target_weight_kg': targetWeight,
                           'usia': _usia,
-                        },
-                      );
+                        });
+                      }
                     } catch (e) {
-                      // Ini menangani error penyimpanan lokal atau error lainnya yang tidak tertangkap di _sendGoalsToBackend
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Error saat menyimpan: $e')),
                         );
                       }
                     } finally {
-                        if(mounted) setState(() => _isSavingGoals = false);
+                      if (mounted) setState(() => _isSavingGoals = false);
                     }
                   },
                   style: ElevatedButton.styleFrom(
