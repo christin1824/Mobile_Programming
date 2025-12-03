@@ -13,6 +13,7 @@ class LariFinishPage extends StatefulWidget {
   final int calories;
   // --- PERBAIKAN: Parameter untuk Data Sensor/Waypoint ---
   final List<Map<String, dynamic>> waypointsData; 
+  final String? startLocationName;
   // -------------------------------------------------
 
   const LariFinishPage({
@@ -24,6 +25,8 @@ class LariFinishPage extends StatefulWidget {
     required this.calories,
     // --- PERBAIKAN: Tambahkan ke konstruktor ---
     required this.waypointsData,
+    this.startLocationName,
+    
     // -------------------------------------
   });
 

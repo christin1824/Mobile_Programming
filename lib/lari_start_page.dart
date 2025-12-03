@@ -18,12 +18,15 @@ class SensorWaypoint {
   final double gyroZ;
   final DateTime timestamp;
 
+  
+
   SensorWaypoint({
     required this.latitude,
     required this.longitude,
     required this.accelX,
     required this.gyroZ,
     required this.timestamp,
+    
   });
 
   Map<String, dynamic> toJson() => {
@@ -89,12 +92,14 @@ class LariStartPage extends StatefulWidget {
   final bool isTargetJarak;
   final double targetJarak;
   final int targetWaktu;
+  final String? initialStartLocationName;
 
   const LariStartPage({
     super.key,
     required this.isTargetJarak,
     required this.targetJarak,
     required this.targetWaktu,
+    this.initialStartLocationName,
   });
 
   @override

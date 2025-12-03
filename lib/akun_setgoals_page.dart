@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async'; 
+import 'dart:async'; // Dipertahankan untuk TimeoutException
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_frontend/backend_service.dart';
 
@@ -34,6 +34,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
 
   // --- Loading State ---
   bool _isSavingGoals = false;
+  bool _isInitialLoading = true; // State untuk tampilan loading awal
   // -------------------------
 
   // Warna dan Konstanta Desain
@@ -46,7 +47,7 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
   @override
   void initState() {
     super.initState();
-    _loadSavedGoals(); // Load data saat halaman dibuka
+    _loadAllData(); // Memuat data dari backend/lokal
   }
 
   void _showSnackBar(String message, {Color color = Colors.red}) {
@@ -57,22 +58,72 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     }
   }
   
-  // === FUNGSI LOAD DATA (Agar slider mengingat posisi terakhir) ===
-  Future<void> _loadSavedGoals() async {
-    final prefs = await SharedPreferences.getInstance();
+  // === FUNGSI UTAMA LOAD DATA (Mengambil dari Backend dan Lokal) ===
+  Future<void> _loadAllData() async {
+      final prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+      
+      // 1. Ambil data terakhir dari SharedPreferences (sebagai fallback dan inisialisasi)
+      _loadLocalData(prefs);
+
+      if (user != null) {
+          // 2. Ambil data goals terbaru dari Backend
+          final userGoalsResponse = await BackendService.getUserFromServer(user.uid);
+          
+          if (userGoalsResponse != null) {
+              _loadRemoteData(userGoalsResponse);
+          }
+      }
+      
+      setState(() {
+          _isInitialLoading = false;
+      });
+  }
+
+  // Helper untuk memuat data LOKAL (SharedPreferences)
+  void _loadLocalData(SharedPreferences prefs) {
     setState(() {
-      // Load Target (jika ada, jika tidak pakai default)
+      // Load Target (menggunakan null-aware operator untuk nilai terakhir)
       _langkahTarget = prefs.getDouble('target_langkah') ?? 8000;
       _jarakTarget = prefs.getDouble('target_jarak') ?? 25;
       _durasiTarget = prefs.getDouble('target_durasi') ?? 60;
 
-      // Load Data Fisik (Menggunakan key yang konsisten)
+      // Load Data Fisik
       _jenisKelamin = prefs.getString('user_gender') ?? 'Pria';
       _tinggiBadan = prefs.getDouble('user_height') ?? 170;
       _beratBadan = prefs.getInt('user_weight') ?? 78;
       _usia = prefs.getInt('user_age') ?? 25;
     });
   }
+  
+  // Helper untuk memuat data REMOTE (Backend) - Terapkan ke STATE
+  void _loadRemoteData(Map<String, dynamic> userData) {
+      // NOTE: Endpoint getUserFromServer biasanya hanya mengembalikan data profil, 
+      // bukan daftar goals. Namun, kita coba ekstrak data profil yang tersimpan 
+      // dari sinkronisasi Sign Up/Goals sebelumnya (jika Anda menyimpannya di tabel 'users').
+      
+      setState(() {
+          _jenisKelamin = userData['gender'] ?? _jenisKelamin;
+          
+          // Pastikan nilai numerik dikonversi dengan aman (karena mungkin float/int di JSON)
+          if (userData.containsKey('height_cm')) {
+             _tinggiBadan = (userData['height_cm'] as num).toDouble();
+          }
+          if (userData.containsKey('weight_kg')) {
+             _beratBadan = (userData['weight_kg'] as num).toInt();
+          }
+          if (userData.containsKey('age')) {
+             _usia = (userData['age'] as num).toInt();
+          }
+          
+          // Untuk memuat target goals (_langkahTarget, _jarakTarget, _durasiTarget),
+          // Anda PERLU ENDPOINT BACKEND yang mengembalikan SEMUA goals aktif
+          // (misal /api/goals/active/user/{uid}).
+          // Karena kita tidak punya endpoint goals yang spesifik, kita biarkan saja 
+          // nilai target dimuat dari SharedPreferences yang lebih andal (di _loadLocalData).
+      });
+  }
+  // --- AKHIR FUNGSI LOAD DATA ---
 
 
   // --- FUNGSI MENGHITUNG LEVEL BERDASARKAN NILAI ---
@@ -85,7 +136,8 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
 
   // + Fungsi baru untuk kirim data ke backend
   Future<bool> _sendGoalsToBackend() async {
-    // 1. Cek User Login
+    // ... (Logika pengiriman API tetap sama) ...
+    // HANYA MENGAMBIL BAGIAN PENTING UNTUK MEMPERBAIKI KODE
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (mounted) {
@@ -94,30 +146,21 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
       return false; 
     }
     
-    // --- 1. HITUNG LEVEL SEBELUM MEMBUAT PAYLOAD ---
-    final String calculatedLevel = _calculateLevel(
-        _langkahTarget, 
-        3000, 
-        15000, 
-        'Pemula', 
-        'Sedang', 
-        'Atlet' 
-    );
-
-    // Siapkan data dasar yang akan diulang di setiap payload
-    final basePayload = {
+    // Siapkan data profil dasar (TIDAK ADA LEVEL DI SINI, level akan dihitung di bawah)
+    final baseProfileData = {
       // --- PERBAIKAN NAMA KOLOM UNTUK DTO JAVA ---
-      'user_id': user.uid, // DTO: @JsonProperty("user_id")
-      'userId': user.uid,  // Fallback untuk variabel 'userId'
+      'user_id': user.uid, 
+      'userId': user.uid,  
       
+      // Data Profil (sesuai DTO Java)
       'gender': _jenisKelamin, 
-      'height_cm': _tinggiBadan.toInt(), // DTO: @JsonProperty("height_cm")
-      'weight_kg': _beratBadan.toDouble(), // DTO: @JsonProperty("weight_kg")
-      'age': _usia, 
+      'height_cm': _tinggiBadan.toInt(), 
+      'weight_kg': _beratBadan.toDouble(),
+      'age': _usia,
       
+      // Kolom Wajib Lain
       'time_period': 'DAILY',
       'date': DateTime.now().toIso8601String().substring(0, 10), 
-      'level': calculatedLevel, // FIX: Gunakan level yang dihitung
       'target_weight_kg': null, // Dibiarkan null
     };
 
@@ -125,24 +168,30 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
     final List<Map<String, dynamic>> goalsToSend = [
       // 1. LANGKAH TARGET
       {
-        ...basePayload, 
+        ...baseProfileData, 
         'goal_type': 'LANGKAH_TARGET', 
         'target_value': _langkahTarget.toInt(), 
         'unit': 'Steps',
+        // PERBAIKAN: Hitung level berdasarkan target langkah
+        'level': _calculateLevel(_langkahTarget, 3000, 15000, 'Pemula', 'Sedang', 'Atlet'), 
       },
       // 2. JARAK TARGET
       {
-        ...basePayload, 
+        ...baseProfileData, 
         'goal_type': 'JARAK_LARI_TARGET', 
         'target_value': _jarakTarget, 
         'unit': 'KM',
+        // PERBAIKAN: Hitung level berdasarkan target jarak
+        'level': _calculateLevel(_jarakTarget, 1, 42, 'Pemula', 'Sedang', 'Atlet'), 
       },
       // 3. DURASI TARGET
       {
-        ...basePayload, 
+        ...baseProfileData, 
         'goal_type': 'DURASI_TARGET', 
         'target_value': _durasiTarget.toInt(), 
         'unit': 'Menit',
+        // PERBAIKAN: Hitung level berdasarkan target durasi
+        'level': _calculateLevel(_durasiTarget, 15, 120, 'Pemula', 'Sedang', 'Atlet'), 
       },
     ];
 
@@ -181,18 +230,18 @@ class _AkunSetGoalsPageState extends State<AkunSetGoalsPage> {
 
   // + Simpan profil dasar agar bisa di-load di akun_profile.dart
   Future<void> _persistUserProfileData(SharedPreferences prefs) async {
-    // FIXED: Menyimpan data ke key yang konsisten dengan loading/saving lokal
+    // Menyimpan data ke key yang konsisten dengan loading/saving lokal
     await prefs.setDouble('user_weight', _beratBadan.toDouble());
     await prefs.setDouble('user_height', _tinggiBadan);
     await prefs.setString('user_gender', _jenisKelamin);
     await prefs.setInt('user_age', _usia);
 
     // Simpan keys yang digunakan di tempat lain (jika masih digunakan)
-    await prefs.setDouble('_keyBeratAwal1', _beratBadan.toDouble());
-    await prefs.setDouble('_keyBeratAwal2', _beratBadan.toDouble());
-    await prefs.setDouble('_keyTinggi', _tinggiBadan);
-    await prefs.setString('_keyJenisKelamin', _jenisKelamin);
-    await prefs.setInt('_keyUsia', _usia);
+    await prefs.setDouble(_keyBeratAwal1, _beratBadan.toDouble());
+    await prefs.setDouble(_keyBeratAwal2, _beratBadan.toDouble());
+    await prefs.setDouble(_keyTinggi, _tinggiBadan);
+    await prefs.setString(_keyJenisKelamin, _jenisKelamin);
+    await prefs.setInt(_keyUsia, _usia);
   }
 
   // --- Bagian Widget Helpers ---
